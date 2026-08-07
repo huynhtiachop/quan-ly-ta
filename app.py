@@ -46,7 +46,7 @@ st.markdown("""
 # 3. KẾT NỐI DỮ LIỆU REALTIME (GOOGLE SHEETS)
 # ==========================================
 # ⚠️ THAY ĐƯỜNG LINK NÀY BẰNG LINK CSV CỦA BẠN
-SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_xxxxxx/pub?gid=0&single=true&output=csv"
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVb3rLLnxyEcojV3neR2SWmZViC4GMRy-uRrDhb6d4o84UaE5C_Po9NQZDc-Hduc1ZQVAaRAUYxDR5/pub?output=csv"
 
 @st.cache_data(ttl=10)
 def lay_danh_sach_ta(url):
