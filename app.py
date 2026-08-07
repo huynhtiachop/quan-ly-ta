@@ -178,5 +178,57 @@ elif menu == "📝 Đánh giá công việc":
 # ------------------------------------------
 else:
     st.title(menu)
-    st.write(f"Mô đun **{menu}** đang trong quá trình phát triển (Under Construction).")
+   # ------------------------------------------
+# MÀN HÌNH 3: QUẢN LÝ TRỢ GIẢNG
+# ------------------------------------------
+elif menu == "👥 Quản lý Trợ giảng":
+    st.title("Hồ Sơ & Điều Phối Nhân Sự")
+    
+    # Kéo dữ liệu từ Google Sheets
+    danh_sach_ta, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
+    
+    if df_data is not None:
+        # TẠO TAB ĐỂ CHIA KHÔNG GIAN
+        tab_danh_sach, tab_ho_so = st.tabs(["📋 Danh sách Tổng", "🪪 Hồ sơ Chi tiết"])
+        
+        with tab_danh_sach:
+            st.subheader("Danh bạ Trợ giảng đang hoạt động")
+            # Hiển thị bảng dữ liệu (chỉ lấy các cột quan trọng)
+            try:
+                bang_hien_thi = df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò']]
+                st.dataframe(bang_hien_thi, use_container_width=True, hide_index=True)
+            except KeyError:
+                st.write("Đang chờ cập nhật cột dữ liệu từ Google Sheets...")
+                st.dataframe(df_data) # Nếu chưa khớp tên cột thì hiện tạm toàn bộ bảng
+                
+        with tab_ho_so:
+            st.subheader("Tra cứu thông tin nhân sự")
+            chon_ta = st.selectbox("Tìm kiếm Trợ giảng:", danh_sach_ta)
+            
+            # Khung hiển thị chi tiết (Profile Card)
+            thong_tin = df_data[df_data['Họ và tên'] == chon_ta].iloc[0]
+            
+            # Dùng st.container để tạo thành một khối thẻ (Card)
+            with st.container():
+                st.markdown("---")
+                col_anh, col_thongtin = st.columns([1, 3])
+                
+                with col_anh:
+                    # Chèn một avatar mặc định
+                    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=150)
+                    
+                with col_thongtin:
+                    st.markdown(f"### {thong_tin['Họ và tên']}")
+                    st.markdown(f"**Vai trò:** {thong_tin.get('Vai trò', 'Chưa cập nhật')} | **Trạng thái:** {thong_tin.get('Trạng Thái', 'Đang làm việc')}")
+                    st.markdown(f"📞 **SĐT:** {thong_tin.get('Số điện thoại', 'Chưa cập nhật')}")
+                    st.markdown(f"📧 **Email:** {thong_tin.get('Email', 'Chưa cập nhật')}")
+                    
+                st.markdown("---")
+                # Thêm nút hành động nhanh
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
+                col_btn1.button("Phân công lớp mới", key="btn_pc")
+                col_btn2.button("Gửi email nhắc nhở", key="btn_mail")
+                col_btn3.button("Tạm đình chỉ công việc", key="btn_xoa")
+    else:
+        st.warning("Hệ thống chưa kết nối được với Google Sheets để tải danh sách.")
     st.info("Vui lòng chọn mục **📝 Đánh giá công việc** ở Sidebar bên trái để trải nghiệm tính năng đã hoàn thiện.")
