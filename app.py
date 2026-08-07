@@ -181,4 +181,4 @@ else:
     st.write(f"Mô đun **{menu}** đang trong quá trình phát triển (Under Construction).")
     st.info("Vui lòng chọn mục **📝 Đánh giá công việc** ở Sidebar bên trái để trải nghiệm tính năng đã hoàn thiện.")
         # Vẽ biểu đồ đường
-        st.line_chart(data_loi)
+    st.line_chart(data_loi)
