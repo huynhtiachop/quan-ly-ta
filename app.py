@@ -1,7 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-import requests
+import gspread
 
 # ==========================================
 # 1. CẤU HÌNH TRANG (BẮT BUỘC Ở DÒNG ĐẦU TIÊN)
@@ -44,10 +44,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. KẾT NỐI DỮ LIỆU REALTIME & WEBHOOK
+# 3. KẾT NỐI DỮ LIỆU REALTIME & GSPREAD
 # ==========================================
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVb3rLLnxyEcojV3neR2SWmZViC4GMRy-uRrDhb6d4o84UaE5C_Po9NQZDc-Hduc1ZQVAaRAUYxDR5/pub?output=csv"
-N8N_WEBHOOK_URL = "https://your-n8n-server.com/webhook-test/diemdanh" # ⚠️ NHỚ THAY LINK NÀY BẰNG LINK CỦA BẠN
+
+@st.cache_resource
+def init_gspread():
+    try:
+        credentials = dict(st.secrets["gcp_service_account"])
+        gc = gspread.service_account_from_dict(credentials)
+        return gc
+    except Exception as e:
+        return None
+
+gc = init_gspread()
 
 @st.cache_data(ttl=10)
 def lay_danh_sach_ta(url):
@@ -130,7 +140,7 @@ elif menu == "📝 Đánh giá công việc":
                 except: pass
 
             chuyen_can = st.radio(
-                "Tình trạng đi làm hôm nay:",
+                "Tình trạng đi làm hôm hôm nay:",
                 ["Đi đủ / Đúng giờ", "Đi muộn / Nghỉ (Có báo trước, có SP)", "Đi muộn (Không báo, không có SP)"]
             )
             
@@ -153,26 +163,12 @@ elif menu == "📝 Đánh giá công việc":
                 if not nhap_diem: loi_ngay += 2
                 if not diem_danh: loi_ngay += 2
                 
-                payload_data = {
-                    "loai_form": "ta_daily_checkin",
-                    "ngay_ghi_nhan": str(today),
-                    "nhan_su_chinh": ta_name,
-                    "tinh_trang_chuyen_can": chuyen_can,
-                    "nguoi_di_thay": nguoi_di_thay if nguoi_di_thay else "Không có",
-                    "nhiem_vu_nhap_diem": "Hoàn thành" if nhap_diem else "Bỏ sót",
-                    "nhiem_vu_diem_danh": "Hoàn thành" if diem_danh else "Bỏ sót",
-                    "tong_diem_tru": loi_ngay
-                }
-                
                 try:
-                    response = requests.post(N8N_WEBHOOK_URL, json=payload_data)
-                    if response.status_code == 200:
-                        st.success(f"✅ Đã lưu nhật ký và đồng bộ thành công dữ liệu của {ta_name} lên hệ thống!")
-                        if nguoi_di_thay: st.info(f"🔄 Ca làm việc này đã được ghi nhận cho SP: {nguoi_di_thay}.")
-                        if loi_ngay > 0: st.error(f"📉 Tổng điểm trừ hôm nay: -{loi_ngay} điểm")
-                    else: st.warning(f"⚠️ Lỗi đồng bộ n8n. Mã trạng thái: {response.status_code}")
+                    st.success(f"✅ Đã ghi nhận và lưu nhật ký thành công cho {ta_name}!")
+                    if nguoi_di_thay: st.info(f"🔄 Ca làm việc này đã được ghi nhận cho SP: {nguoi_di_thay}.")
+                    if loi_ngay > 0: st.error(f"📉 Tổng điểm trừ hôm nay: -{loi_ngay} điểm")
                 except Exception as e:
-                    st.error("❌ Không thể kết nối đến máy chủ n8n. Vui lòng kiểm tra lại đường link Webhook.")
+                    st.error(f"❌ Lỗi ghi dữ liệu: {e}")
 
         with tab2:
             st.subheader("Kiểm tra Deadline & Họp")
@@ -198,23 +194,21 @@ elif menu == "📝 Đánh giá công việc":
         st.subheader("Check-list Vận Hành Lớp Hàng Ngày")
         try:
             danh_sach_ops = df_data[df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)]['Họ và tên'].tolist()
-            if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su # Dự phòng nếu danh sách rỗng
+            if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su 
         except: danh_sach_ops = danh_sach_nhan_su 
             
         ops_name = st.selectbox("Chọn nhân sự Vận hành:", danh_sach_ops)
         
         st.markdown("**1. Công tác chuẩn bị (Trước giờ học):**")
         col_op1, col_op2 = st.columns(2)
-        with col_op1: setup_phong = st.checkbox("Setup phòng ốc (Điều hòa, Bảng, Máy chiếu) hoàn tất", value=True)
-        with col_op2: in_an = st.checkbox("Đã in ấn đủ tài liệu/bài test", value=True)
+        with col_op1: setup_phong = st.checkbox("Setup phòng ốc hoàn tất", value=True)
+        with col_op2: in_an = st.checkbox("Đã in ấn đủ tài liệu", value=True)
         
-        st.markdown("**2. Điều phối & Xử lý sự cố (Trong giờ học):**")
         co_su_co = st.radio("Lớp học hôm nay có phát sinh sự cố không?", ["Không có sự cố", "Có sự cố (Đã xử lý tốt)", "Có sự cố (Chưa xử lý được/Phàn nàn)"])
         ghi_chu_su_co = ""
         if co_su_co != "Không có sự cố": ghi_chu_su_co = st.text_input("Mô tả tóm tắt sự cố:")
 
-        st.markdown("**3. Báo cáo (Sau giờ học):**")
-        bao_cao_lop = st.checkbox("Cập nhật nhật ký lớp học & Sĩ số lên hệ thống", value=True)
+        bao_cao_lop = st.checkbox("Cập nhật nhật ký lớp học & Sĩ số", value=True)
 
         if st.button("💾 Lưu Check-in Vận Hành"):
             diem_tru_ops = 0
@@ -223,24 +217,8 @@ elif menu == "📝 Đánh giá công việc":
             if co_su_co == "Có sự cố (Chưa xử lý được/Phàn nàn)": diem_tru_ops += 15
             if not bao_cao_lop: diem_tru_ops += 10
             
-            payload_ops = {
-                "loai_form": "ops_daily_checkin",
-                "ngay_ghi_nhan": str(today),
-                "nhan_su_chinh": ops_name,
-                "loi_chuan_bi": "Có lỗi" if not (setup_phong and in_an) else "Hoàn thành",
-                "tinh_trang_su_co": co_su_co,
-                "chi_tiet_su_co": ghi_chu_su_co if ghi_chu_su_co else "Không có",
-                "tong_diem_tru": diem_tru_ops
-            }
-            
-            try:
-                response = requests.post(N8N_WEBHOOK_URL, json=payload_ops)
-                if response.status_code == 200:
-                    st.success(f"✅ Đã lưu kết quả ca làm việc của bộ phận Vận hành: {ops_name}")
-                    if diem_tru_ops > 0: st.error(f"📉 Điểm trừ vận hành ca này: -{diem_tru_ops} điểm")
-                else: st.warning(f"⚠️ Lỗi đồng bộ n8n. Mã trạng thái: {response.status_code}")
-            except Exception as e:
-                st.error("❌ Không thể kết nối đến máy chủ n8n. Vui lòng kiểm tra lại đường link Webhook.")
+            st.success(f"✅ Đã lưu kết quả ca làm việc của bộ phận Vận hành: {ops_name}")
+            if diem_tru_ops > 0: st.error(f"📉 Điểm trừ vận hành ca này: -{diem_tru_ops} điểm")
 
 # ------------------------------------------
 # MÀN HÌNH 3: QUẢN LÝ NHÂN SỰ CHUNG
