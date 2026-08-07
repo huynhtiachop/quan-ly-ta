@@ -285,3 +285,40 @@ else:
     st.title(menu)
     st.write(f"Mô đun **{menu}** đang trong quá trình phát triển (Under Construction).")
     st.info("Vui lòng chọn mục **📝 Đánh giá công việc** ở Sidebar bên trái để trải nghiệm tính năng đã hoàn thiện.")
+    import pandas as pd
+import numpy as np
+
+if menu == "🏠 Tổng quan":
+    st.title("Bảng Điều Khiển Cuối Tháng (Dashboard)")
+    st.write("Thống kê hiệu suất và chuyên cần của đội ngũ Trợ giảng trong tháng này.")
+    
+    # 1. Các thẻ số liệu tổng quan (Metrics)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Tổng số TA", "15", "+2")
+    col2.metric("Tỷ lệ đi muộn", "5%", "-2%")
+    col3.metric("Hoàn thành báo cáo", "90%", "Tăng")
+    col4.metric("Điểm đánh giá TB", "4.8/5", "Ổn định")
+    
+    st.markdown("---")
+    
+    # 2. Biểu đồ thống kê (Sử dụng dữ liệu giả lập Pandas để demo)
+    col_chart1, col_chart2 = st.columns(2)
+    
+    with col_chart1:
+        st.subheader("Top TA Xuất Sắc Tháng")
+        # Tạo dữ liệu mẫu
+        data_ta = pd.DataFrame({
+            'Tên TA': ['Huỳnh Anh', 'Nguyễn Văn A', 'Trần Thị B', 'Lê Văn C'],
+            'Điểm': [95, 88, 85, 70]
+        }).set_index('Tên TA')
+        # Vẽ biểu đồ cột
+        st.bar_chart(data_ta)
+        
+    with col_chart2:
+        st.subheader("Tần suất lỗi vi phạm")
+        data_loi = pd.DataFrame({
+            'Loại lỗi': ['Đi muộn', 'Quên điểm danh', 'Trễ báo giảng', 'Vắng họp'],
+            'Số lượng': [12, 5, 8, 2]
+        }).set_index('Loại lỗi')
+        # Vẽ biểu đồ đường
+        st.line_chart(data_loi)
