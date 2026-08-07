@@ -114,14 +114,14 @@ elif menu == "📝 Đánh giá công việc":
     
     tab1, tab2 = st.tabs(["📅 Check-in Hàng Ngày", "🚩 Quản Lý Deadline Tháng"])
 
-    # Lấy dữ liệu Realtime từ hàm đã viết ở trên
+    # Lấy dữ liệu Realtime
     danh_sach_ta, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
 
     with tab1:
         st.subheader("Đánh giá nhiệm vụ trong ngày")
         ta_name = st.selectbox("Chọn nhân sự:", danh_sach_ta, key="checkin_ngay")
         
-        # Hiển thị SĐT và Vai trò (nếu kết nối được Google Sheets)
+        # Hiển thị SĐT và Vai trò
         if df_data is not None and ta_name != "Lỗi/Chưa có link dữ liệu":
             try:
                 thong_tin = df_data[df_data['Họ và tên'] == ta_name].iloc[0]
@@ -133,6 +133,17 @@ elif menu == "📝 Đánh giá công việc":
             "Tình trạng đi làm hôm nay:",
             ["Đi đủ / Đúng giờ", "Đi muộn / Nghỉ (Có báo trước, có SP)", "Đi muộn (Không báo, không có SP)"]
         )
+        
+        # --- LOGIC NGƯỜI ĐI THAY (SP) ---
+        nguoi_di_thay = None
+        if chuyen_can == "Đi muộn / Nghỉ (Có báo trước, có SP)":
+            # Tạo danh sách SP (loại bỏ người đang xin nghỉ)
+            danh_sach_sp = [ta for ta in danh_sach_ta if ta != ta_name]
+            st.markdown("---")
+            nguoi_di_thay = st.selectbox("👤 Chọn người đi thay (SP):", danh_sach_sp)
+            st.info(f"Hệ thống sẽ không trừ điểm {ta_name} và sẽ tính lương ca này cho {nguoi_di_thay}.")
+            st.markdown("---")
+        # --------------------------------
         
         st.markdown("**Nhiệm vụ lớp học:**")
         col1, col2 = st.columns(2)
@@ -146,7 +157,13 @@ elif menu == "📝 Đánh giá công việc":
             if not diem_danh: loi_ngay += 2
             
             st.success(f"Đã lưu nhật ký ngày cho {ta_name}!")
-            if loi_ngay > 0: st.error(f"Tổng điểm trừ hôm nay: -{loi_ngay} điểm")
+            
+            # Thông báo thêm nếu có người đi thay
+            if nguoi_di_thay:
+                st.success(f"Đã ghi nhận ca làm việc thay thế cho {nguoi_di_thay}!")
+                
+            if loi_ngay > 0: 
+                st.error(f"Tổng điểm trừ hôm nay: -{loi_ngay} điểm")
 
     with tab2:
         st.subheader("Kiểm tra Deadline & Họp")
@@ -178,38 +195,32 @@ elif menu == "📝 Đánh giá công việc":
 elif menu == "👥 Quản lý Trợ giảng":
     st.title("Hồ Sơ & Điều Phối Nhân Sự")
     
-    # Kéo dữ liệu từ Google Sheets
     danh_sach_ta, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
     
     if df_data is not None:
-        # TẠO TAB ĐỂ CHIA KHÔNG GIAN
         tab_danh_sach, tab_ho_so = st.tabs(["📋 Danh sách Tổng", "🪪 Hồ sơ Chi tiết"])
         
         with tab_danh_sach:
             st.subheader("Danh bạ Trợ giảng đang hoạt động")
-            # Hiển thị bảng dữ liệu (chỉ lấy các cột quan trọng)
             try:
                 bang_hien_thi = df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò']]
                 st.dataframe(bang_hien_thi, use_container_width=True, hide_index=True)
             except KeyError:
                 st.write("Đang chờ cập nhật cột dữ liệu từ Google Sheets...")
-                st.dataframe(df_data) # Nếu chưa khớp tên cột thì hiện tạm toàn bộ bảng
+                st.dataframe(df_data) 
                 
         with tab_ho_so:
             st.subheader("Tra cứu thông tin nhân sự")
             chon_ta = st.selectbox("Tìm kiếm Trợ giảng:", danh_sach_ta)
             
-            # Khung hiển thị chi tiết (Profile Card)
             if chon_ta != "Lỗi/Chưa có link dữ liệu" and len(danh_sach_ta) > 0:
                 thong_tin = df_data[df_data['Họ và tên'] == chon_ta].iloc[0]
                 
-                # Dùng st.container để tạo thành một khối thẻ (Card)
                 with st.container():
                     st.markdown("---")
                     col_anh, col_thongtin = st.columns([1, 3])
                     
                     with col_anh:
-                        # Chèn một avatar mặc định
                         st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=150)
                         
                     with col_thongtin:
@@ -219,7 +230,6 @@ elif menu == "👥 Quản lý Trợ giảng":
                         st.markdown(f"📧 **Email:** {thong_tin.get('Email', 'Chưa cập nhật')}")
                         
                     st.markdown("---")
-                    # Thêm nút hành động nhanh
                     col_btn1, col_btn2, col_btn3 = st.columns(3)
                     col_btn1.button("Phân công lớp mới", key="btn_pc")
                     col_btn2.button("Gửi email nhắc nhở", key="btn_mail")
