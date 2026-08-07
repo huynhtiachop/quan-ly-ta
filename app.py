@@ -45,7 +45,6 @@ st.markdown("""
 # ==========================================
 # 3. KẾT NỐI DỮ LIỆU REALTIME (GOOGLE SHEETS)
 # ==========================================
-# ⚠️ THAY ĐƯỜNG LINK NÀY BẰNG LINK CSV CỦA BẠN
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVb3rLLnxyEcojV3neR2SWmZViC4GMRy-uRrDhb6d4o84UaE5C_Po9NQZDc-Hduc1ZQVAaRAUYxDR5/pub?output=csv"
 
 @st.cache_data(ttl=10)
@@ -174,11 +173,6 @@ elif menu == "📝 Đánh giá công việc":
                 st.success("Hoàn thành xuất sắc mọi deadline trong tháng!")
 
 # ------------------------------------------
-# MÀN HÌNH 3: CÁC MỤC ĐANG PHÁT TRIỂN
-# ------------------------------------------
-else:
-    st.title(menu)
-   # ------------------------------------------
 # MÀN HÌNH 3: QUẢN LÝ TRỢ GIẢNG
 # ------------------------------------------
 elif menu == "👥 Quản lý Trợ giảng":
@@ -206,29 +200,37 @@ elif menu == "👥 Quản lý Trợ giảng":
             chon_ta = st.selectbox("Tìm kiếm Trợ giảng:", danh_sach_ta)
             
             # Khung hiển thị chi tiết (Profile Card)
-            thong_tin = df_data[df_data['Họ và tên'] == chon_ta].iloc[0]
-            
-            # Dùng st.container để tạo thành một khối thẻ (Card)
-            with st.container():
-                st.markdown("---")
-                col_anh, col_thongtin = st.columns([1, 3])
+            if chon_ta != "Lỗi/Chưa có link dữ liệu" and len(danh_sach_ta) > 0:
+                thong_tin = df_data[df_data['Họ và tên'] == chon_ta].iloc[0]
                 
-                with col_anh:
-                    # Chèn một avatar mặc định
-                    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=150)
+                # Dùng st.container để tạo thành một khối thẻ (Card)
+                with st.container():
+                    st.markdown("---")
+                    col_anh, col_thongtin = st.columns([1, 3])
                     
-                with col_thongtin:
-                    st.markdown(f"### {thong_tin['Họ và tên']}")
-                    st.markdown(f"**Vai trò:** {thong_tin.get('Vai trò', 'Chưa cập nhật')} | **Trạng thái:** {thong_tin.get('Trạng Thái', 'Đang làm việc')}")
-                    st.markdown(f"📞 **SĐT:** {thong_tin.get('Số điện thoại', 'Chưa cập nhật')}")
-                    st.markdown(f"📧 **Email:** {thong_tin.get('Email', 'Chưa cập nhật')}")
-                    
-                st.markdown("---")
-                # Thêm nút hành động nhanh
-                col_btn1, col_btn2, col_btn3 = st.columns(3)
-                col_btn1.button("Phân công lớp mới", key="btn_pc")
-                col_btn2.button("Gửi email nhắc nhở", key="btn_mail")
-                col_btn3.button("Tạm đình chỉ công việc", key="btn_xoa")
+                    with col_anh:
+                        # Chèn một avatar mặc định
+                        st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=150)
+                        
+                    with col_thongtin:
+                        st.markdown(f"### {thong_tin.get('Họ và tên', '')}")
+                        st.markdown(f"**Vai trò:** {thong_tin.get('Vai trò', 'Chưa cập nhật')} | **Trạng thái:** {thong_tin.get('Trạng Thái', 'Đang làm việc')}")
+                        st.markdown(f"📞 **SĐT:** {thong_tin.get('Số điện thoại', 'Chưa cập nhật')}")
+                        st.markdown(f"📧 **Email:** {thong_tin.get('Email', 'Chưa cập nhật')}")
+                        
+                    st.markdown("---")
+                    # Thêm nút hành động nhanh
+                    col_btn1, col_btn2, col_btn3 = st.columns(3)
+                    col_btn1.button("Phân công lớp mới", key="btn_pc")
+                    col_btn2.button("Gửi email nhắc nhở", key="btn_mail")
+                    col_btn3.button("Tạm đình chỉ công việc", key="btn_xoa")
     else:
         st.warning("Hệ thống chưa kết nối được với Google Sheets để tải danh sách.")
+
+# ------------------------------------------
+# MÀN HÌNH 4: CÁC MỤC ĐANG PHÁT TRIỂN
+# ------------------------------------------
+else:
+    st.title(menu)
+    st.write(f"Mô đun **{menu}** đang trong quá trình phát triển (Under Construction).")
     st.info("Vui lòng chọn mục **📝 Đánh giá công việc** ở Sidebar bên trái để trải nghiệm tính năng đã hoàn thiện.")
