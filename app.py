@@ -8,20 +8,14 @@ import gspread
 # ==========================================
 st.set_page_config(page_title="KB-LAB | Quản Lý Nhân Sự", page_icon="🔴", layout="wide")
 
-# Nâng cấp CSS: Thêm hiệu ứng bo góc mượt mà và bóng đổ (Shadow)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
     .stApp { background-color: #F5F7FA; }
-    
-    /* Thiết kế thanh Sidebar */
     [data-testid="stSidebar"] { background-color: #1A1A1A; border-right: 2px solid #800000; }
     [data-testid="stSidebar"] * { color: #F5F7FA !important; }
-    
     h1, h2, h3, h4, h5, h6 { color: #2D2D2D !important; font-weight: 700; }
-    
-    /* Thiết kế nút bấm chuẩn SaaS */
     .stButton>button {
         background: linear-gradient(135deg, #8B0000 0%, #FF0000 100%);
         color: white !important; border: none; border-radius: 8px; 
@@ -32,17 +26,9 @@ st.markdown("""
         background: linear-gradient(135deg, #FF0000 0%, #8B0000 100%);
         box-shadow: 0 6px 12px rgba(230, 0, 0, 0.3); transform: translateY(-2px);
     }
-    
-    /* Hiệu ứng nổi cho các ô Metric (Thống kê) */
     [data-testid="metric-container"] {
         background-color: white; border-radius: 12px; padding: 15px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;
-    }
-    
-    /* Thiết kế ô nhập liệu */
-    div[data-baseweb="select"] > div, input[type="text"], input[type="number"] {
-        background-color: white !important; border-radius: 8px; 
-        border: 1px solid #E2E8F0; color: #2D2D2D !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -70,163 +56,192 @@ def lay_danh_sach_ta(url):
         return df_active['Họ và tên'].tolist(), df_active
     except: return ["Lỗi dữ liệu"], None
 
-# ==========================================
-# 3. THANH ĐIỀU HƯỚNG BÊN TRÁI
-# ==========================================
 with st.sidebar:
     st.markdown("### 🔴 KB-LAB")
     st.caption("*Kiến tạo chuẩn mực không gian tri thức hiện đại*")
     st.markdown("---")
     menu = st.radio("MENU QUẢN LÝ", ["🏠 Tổng quan", "👥 Quản lý Trợ giảng", "📝 Đánh giá công việc"])
 
+today = datetime.date.today()
+
 # ------------------------------------------
-# MÀN HÌNH 1: DASHBOARD TỰ ĐỘNG CẬP NHẬT
+# MÀN HÌNH 1: DASHBOARD & XẾP HẠNG
 # ------------------------------------------
 if menu == "🏠 Tổng quan":
-    st.title("Bảng Điều Khiển (Dashboard)")
+    st.title("Bảng Điều Khiển & Xếp Hạng Nhân Sự")
     
     if gc:
         try:
             sh = gc.open_by_url(SHEET_MASTER_URL)
+            
+            # Kéo dữ liệu cả 2 Sheet
             ws_ta = sh.worksheet("Nhat_Ky_TA")
-            data_ta = ws_ta.get_all_records()
-            df_log = pd.DataFrame(data_ta)
+            df_ta = pd.DataFrame(ws_ta.get_all_records())
+            ws_ops = sh.worksheet("Nhat_Ky_Ops")
+            df_ops = pd.DataFrame(ws_ops.get_all_records())
+            
+            # Đổi tên cột cho đồng nhất để ghép bảng
+            if not df_ta.empty: df_ta = df_ta.rename(columns={'Tên TA': 'Tên Nhân Sự'})
+            if not df_ops.empty: df_ops = df_ops.rename(columns={'Tên Ops': 'Tên Nhân Sự'})
+            
+            df_log = pd.concat([df_ta, df_ops], ignore_index=True)
             
             if not df_log.empty:
-                st.write("Thống kê hiệu suất và chuyên cần dựa trên dữ liệu thực tế.")
-                
-                tong_luot_diem_danh = len(df_log)
-                di_muon = len(df_log[df_log['Trạng thái'].str.contains('muộn', na=False, case=False)])
-                ty_le_muon = round((di_muon / tong_luot_diem_danh) * 100, 1) if tong_luot_diem_danh > 0 else 0
-                tong_diem_tru = df_log['Điểm trừ'].sum() if 'Điểm trừ' in df_log.columns else 0
+                for col in ['Điểm trừ', 'Điểm cộng']:
+                    if col in df_log.columns:
+                        df_log[col] = pd.to_numeric(df_log[col], errors='coerce').fillna(0)
 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Tổng lượt Check-in", str(tong_luot_diem_danh))
-                col2.metric("Tỷ lệ đi muộn", f"{ty_le_muon}%", "Cần chú ý" if ty_le_muon > 10 else "Tốt", delta_color="inverse")
-                col3.metric("Tổng điểm trừ hệ thống", str(tong_diem_tru))
-                col4.metric("Trạng thái", "Đang đồng bộ", "Realtime")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Tổng lượt ghi nhận", str(len(df_log)))
+                col2.metric("Tổng điểm Cộng (Toàn Team)", str(df_log['Điểm cộng'].sum()), "Tích cực")
+                col3.metric("Tổng điểm Trừ (Toàn Team)", str(df_log['Điểm trừ'].sum()), "Cần khắc phục", delta_color="inverse")
                 st.markdown("---")
                 
-                col_chart1, col_chart2 = st.columns(2)
-                with col_chart1:
-                    st.subheader("Biểu đồ Điểm trừ theo Nhân sự")
-                    try:
-                        df_chart_ta = df_log.groupby('Tên TA')['Điểm trừ'].sum().reset_index()
-                        df_chart_ta = df_chart_ta.set_index('Tên TA')
-                        st.bar_chart(df_chart_ta)
-                    except: st.write("Chưa đủ dữ liệu để vẽ biểu đồ điểm trừ.")
-                    
-                with col_chart2:
-                    st.subheader("Thống kê tình trạng chuyên cần")
-                    try:
-                        df_chuyen_can = df_log['Trạng thái'].value_counts().reset_index()
-                        df_chuyen_can.columns = ['Trạng thái', 'Số lượng']
-                        df_chuyen_can = df_chuyen_can.set_index('Trạng thái')
-                        st.bar_chart(df_chuyen_can)
-                    except: st.write("Chưa đủ dữ liệu để vẽ biểu đồ chuyên cần.")
-            else:
-                st.info("Bảng nhật ký đang trống. Hãy qua mục 'Đánh giá công việc' để ghi nhận ca làm đầu tiên!")
+                # BẢNG XẾP HẠNG (QUỸ ĐIỂM 100)
+                st.subheader("🏆 Bảng Xếp Hạng KPI (Quỹ chuẩn: 100đ/tháng)")
                 
-        except Exception as e:
-            st.warning("Chưa kết nối được trang tính Nhat_Ky_TA. Hãy chắc chắn bạn đã tạo Sheet này và có dòng tiêu đề.")
-    else:
-        st.error("Chưa cấu hình API Key Google Sheets trong mục Secrets của Streamlit.")
+                df_ranking = df_log.groupby('Tên Nhân Sự').agg(
+                    Số_ca_Ghi_nhận=('Ngày', 'count'),
+                    Điểm_cộng=('Điểm cộng', 'sum'),
+                    Điểm_trừ=('Điểm trừ', 'sum')
+                ).reset_index()
+                
+                # Áp dụng công thức 100 của COO
+                df_ranking['KPI_Cuối_Tháng'] = 100 + df_ranking['Điểm_cộng'] - df_ranking['Điểm_trừ']
+                df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
+                
+                st.dataframe(
+                    df_ranking,
+                    column_config={
+                        "Tên Nhân Sự": st.column_config.TextColumn("👤 Tên Nhân Sự", width="medium"),
+                        "Số_ca_Ghi_nhận": st.column_config.NumberColumn("📅 Tần suất"),
+                        "Điểm_cộng": st.column_config.NumberColumn("⭐ Điểm Cộng"),
+                        "Điểm_trừ": st.column_config.NumberColumn("⚠️ Điểm Trừ"),
+                        "KPI_Cuối_Tháng": st.column_config.ProgressColumn(
+                            "🔥 KPI ĐÁNH GIÁ (Trên 100)",
+                            format="%f", min_value=0, max_value=120
+                        ),
+                    },
+                    hide_index=True, use_container_width=True
+                )
+            else: st.info("Chưa có dữ liệu.")
+        except Exception as e: st.warning(f"Lỗi: {e}")
+    else: st.error("Chưa kết nối API Key.")
 
 # ------------------------------------------
-# MÀN HÌNH 2: ĐÁNH GIÁ CÔNG VIỆC (CÓ CHỌN NGÀY & TOAST)
+# MÀN HÌNH 2: ĐÁNH GIÁ CÔNG VIỆC
 # ------------------------------------------
 elif menu == "📝 Đánh giá công việc":
-    st.title("Phân Hệ Đánh Giá Nhân Sự")
+    st.title("Phân Hệ Đánh Giá KPI")
     
-    # --- TÍNH NĂNG MỚI: CHỌN NGÀY LINH HOẠT ---
     col_ngay, col_trong = st.columns([1, 2])
-    with col_ngay:
-        ngay_ghi_nhan = st.date_input("🗓️ Chọn ngày ghi nhận ca làm:", datetime.date.today())
+    with col_ngay: ngay_ghi_nhan = st.date_input("🗓️ Chọn ngày ghi nhận:", today)
     
-    doi_tuong = st.radio("Lựa chọn vị trí:", ["👥 Đội ngũ Trợ giảng (TA)", "⚙️ Đội ngũ Vận hành lớp (Ops)"], horizontal=True)
+    doi_tuong = st.radio("Bộ phận đánh giá:", ["👥 Trợ giảng Chuyên môn (TA)", "⚙️ Trợ giảng Vận hành (Ops)"], horizontal=True)
     st.markdown("---")
     
     danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
+    
+    # Chia Tab để Đánh giá Hàng ngày & Deadline Tháng
+    tab_daily, tab_deadline = st.tabs(["📅 Check-in Hàng Ngày", "🚩 Chấm Điểm Deadline Tháng"])
 
-    # ==== ĐÁNH GIÁ TRỢ GIẢNG ====
-    if doi_tuong == "👥 Đội ngũ Trợ giảng (TA)":
-        st.subheader("Đánh giá nhiệm vụ TA")
-        ta_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su)
-        
-        chuyen_can = st.radio("Tình trạng đi làm ca này:", ["Đi đủ / Đúng giờ", "Đi muộn / Nghỉ (Có báo trước, có SP)", "Đi muộn (Không báo, không có SP)"])
-        nguoi_di_thay = None
-        if chuyen_can == "Đi muộn / Nghỉ (Có báo trước, có SP)":
-            danh_sach_sp = [ta for ta in danh_sach_nhan_su if ta != ta_name]
-            nguoi_di_thay = st.selectbox("👤 Chọn người đi thay (SP):", danh_sach_sp)
-        
-        st.markdown("**Nhiệm vụ lớp học:**")
-        col1, col2 = st.columns(2)
-        with col1: nhap_diem = st.checkbox("Đã nhập điểm số lớp", value=True)
-        with col2: diem_danh = st.checkbox("Đã điểm danh học viên", value=True)
-
-        if st.button("💾 Lưu Check-in TA"):
-            loi_ngay = 0
-            if chuyen_can == "Đi muộn (Không báo, không có SP)": loi_ngay += 10
-            if not nhap_diem: loi_ngay += 2
-            if not diem_danh: loi_ngay += 2
+    # ==========================================
+    # LUỒNG 1: TRỢ GIẢNG CHUYÊN MÔN (TA)
+    # ==========================================
+    if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
+        with tab_daily:
+            st.subheader("Bảng Đánh Giá Task Hàng Ngày (TA)")
+            ta_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_daily")
             
-            if gc:
-                try:
-                    sh = gc.open_by_url(SHEET_MASTER_URL)
-                    ws = sh.worksheet("Nhat_Ky_TA")
-                    # Sử dụng ngay_ghi_nhan thay vì today
-                    dong_moi = [str(ngay_ghi_nhan), ta_name, chuyen_can, nguoi_di_thay if nguoi_di_thay else "Không", "Có lỗi" if loi_ngay > 0 else "Hoàn thành", loi_ngay]
-                    ws.append_row(dong_moi)
-                    
-                    # Hiển thị Toast mượt mà
-                    st.toast(f"Đã lưu thành công dữ liệu ngày {ngay_ghi_nhan.strftime('%d/%m')} cho {ta_name}!", icon="🎉")
-                    
-                    if nguoi_di_thay: st.info(f"🔄 Ca làm việc này tính cho SP: {nguoi_di_thay}")
-                    if loi_ngay > 0: st.error(f"📉 Tổng điểm trừ ca này: -{loi_ngay} điểm")
-                except Exception as e:
-                    st.error(f"❌ Lỗi ghi dữ liệu vào Nhat_Ky_TA. Chi tiết: {e}")
-            else:
-                st.error("Chưa kết nối API Google Sheets.")
+            nguoi_di_thay = st.selectbox("👤 Đi thay cho ai? (Bỏ trống nếu đi ca chính):", [""] + danh_sach_nhan_su)
+            
+            st.markdown("**1. Công việc bắt buộc (Nếu thiếu sẽ bị trừ điểm):**")
+            ta_t1 = st.checkbox("✅ Điểm danh chuẩn & Chuẩn bị đủ tài liệu in ấn (Nếu thiếu/sai: -2đ)", value=True)
+            ta_t2 = st.checkbox("✅ Check 100% BTVN của học sinh (Nếu bỏ sót: -5đ)", value=True)
+            ta_t3 = st.checkbox("✅ Cập nhật đủ điểm & Hỗ trợ học sinh trên lớp (Nếu thiếu: -5đ)", value=True)
 
-    # ==== ĐÁNH GIÁ VẬN HÀNH LỚP ====
+            st.markdown("**2. Hoạt động xuất sắc (Cộng điểm):**")
+            col_c1, col_c2 = st.columns(2)
+            with col_c1: ta_b1 = st.checkbox("⭐ Phát hiện & báo cáo bất thường về BTVN (+2đ)")
+            with col_c2: ta_b2 = st.checkbox("⭐ Hỗ trợ học viên yếu tốt, có feedback khen (+3đ)")
+
+            if st.button("💾 Lưu Check-in TA"):
+                diem_tru = (0 if ta_t1 else 2) + (0 if ta_t2 else 5) + (0 if ta_t3 else 5)
+                diem_cong = (2 if ta_b1 else 0) + (3 if ta_b2 else 0)
+                
+                if gc:
+                    try:
+                        ws = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA")
+                        dong_moi = [str(ngay_ghi_nhan), ta_name, "Ca làm việc", nguoi_di_thay if nguoi_di_thay else "Không", "Ghi nhận Daily", diem_tru, diem_cong, 0]
+                        ws.append_row(dong_moi)
+                        st.toast(f"Đã lưu Daily Task cho {ta_name}! (Trừ: {diem_tru} | Cộng: {diem_cong})", icon="🎉")
+                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
+        
+        with tab_deadline:
+            st.subheader("Phạt Chậm Deadline Tháng (TA)")
+            ta_dl_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_dl")
+            
+            st.markdown("⚠️ *Nhập số ngày nộp trễ. Nếu nộp đúng hạn, để số 0.*")
+            tre_ph = st.number_input("Trễ Báo cáo Phụ huynh (Hạn mùng 1) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
+            tre_bg = st.number_input("Trễ Báo giảng (Hạn mùng 5) [-5đ/ngày]:", min_value=0, max_value=30, value=0)
+            tre_luong = st.number_input("Trễ Chốt lương TA (Hạn mùng 8) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
+            
+            if st.button("💾 Lưu Phạt Deadline TA"):
+                diem_phat_dl = (tre_ph * 10) + (tre_bg * 5) + (tre_luong * 10)
+                if diem_phat_dl > 0:
+                    if gc:
+                        ws = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA")
+                        ws.append_row([str(ngay_ghi_nhan), ta_dl_name, "Vi phạm Deadline", "Không", f"Trễ PH:{tre_ph}d, Trễ BG:{tre_bg}d, Trễ Lương:{tre_luong}d", diem_phat_dl, 0, 0])
+                        st.toast(f"Đã trừ {diem_phat_dl} điểm deadline của {ta_dl_name}!", icon="🚨")
+                else: st.info("Nhân sự nộp đúng hạn, không có điểm phạt.")
+
+    # ==========================================
+    # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS)
+    # ==========================================
     else:
-        st.subheader("Check-list Vận Hành Lớp")
-        try:
-            danh_sach_ops = df_data[df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)]['Họ và tên'].tolist()
-            if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su 
-        except: danh_sach_ops = danh_sach_nhan_su 
+        try: danh_sach_ops = df_data[df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)]['Họ và tên'].tolist()
+        except: danh_sach_ops = danh_sach_nhan_su
+        if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su
             
-        ops_name = st.selectbox("Chọn nhân sự Vận hành:", danh_sach_ops)
-        
-        st.markdown("**1. Công tác chuẩn bị (Trước giờ học):**")
-        col_op1, col_op2 = st.columns(2)
-        with col_op1: setup_phong = st.checkbox("Setup phòng ốc hoàn tất", value=True)
-        with col_op2: in_an = st.checkbox("Đã in ấn đủ tài liệu", value=True)
-        
-        co_su_co = st.radio("Lớp học hôm nay có phát sinh sự cố không?", ["Không có sự cố", "Có sự cố (Đã xử lý tốt)", "Có sự cố (Chưa xử lý được/Phàn nàn)"])
-        bao_cao_lop = st.checkbox("Cập nhật nhật ký lớp học & Sĩ số", value=True)
+        with tab_daily:
+            st.subheader("Bảng Đánh Giá Task Hàng Ngày (Ops)")
+            ops_name = st.selectbox("Chọn nhân sự (Ops):", danh_sach_ops, key="ops_name_daily")
+            
+            st.markdown("**1. Công việc bắt buộc (Nếu thiếu sẽ bị trừ điểm):**")
+            ops_t1 = st.checkbox("✅ Có mặt tại trung tâm đúng giờ, trước 18h15 (Nếu đi muộn: -5đ)", value=True)
+            ops_t2 = st.checkbox("✅ In ấn đủ & Đảm bảo vệ sinh sạch sẽ các phòng học (Nếu thiếu: -2đ)", value=True)
+            ops_t3 = st.checkbox("✅ Kiểm soát sĩ số, gọi điện lý do vắng & Ghi danh chuẩn (Sai sót: -5đ)", value=True)
+            ops_t4 = st.checkbox("✅ Xử lý phát sinh & Support học viên/lớp kịp thời (Nếu chậm trễ: -3đ)", value=True)
 
-        if st.button("💾 Lưu Check-in Vận Hành"):
-            diem_tru_ops = 0
-            if not setup_phong: diem_tru_ops += 5
-            if not in_an: diem_tru_ops += 5
-            if co_su_co == "Có sự cố (Chưa xử lý được/Phàn nàn)": diem_tru_ops += 15
-            if not bao_cao_lop: diem_tru_ops += 10
+            st.markdown("**2. Hoạt động xuất sắc (Cộng điểm):**")
+            ops_b1 = st.checkbox("⭐ Xử lý sự cố khó cực kỳ khéo léo/Được PH khen (+5đ)", value=False)
+
+            if st.button("💾 Lưu Check-in Ops"):
+                diem_tru_ops = (0 if ops_t1 else 5) + (0 if ops_t2 else 2) + (0 if ops_t3 else 5) + (0 if ops_t4 else 3)
+                diem_cong_ops = 5 if ops_b1 else 0
+                
+                if gc:
+                    try:
+                        ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
+                        # Ghi log Ops (Các cột: Ngày, Tên Ops, Chuẩn bị, Sự cố, Báo cáo, Điểm trừ, Điểm cộng, Tổng điểm)
+                        ws_ops.append_row([str(ngay_ghi_nhan), ops_name, "Có lỗi" if diem_tru_ops>0 else "Tốt", "Ops", "Ghi nhận Daily", diem_tru_ops, diem_cong_ops, 0])
+                        st.toast(f"Đã lưu Daily Task Ops cho {ops_name}! (Trừ: {diem_tru_ops} | Cộng: {diem_cong_ops})", icon="🎉")
+                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
+                    
+        with tab_deadline:
+            st.subheader("Phạt Chậm Deadline Tháng (Ops)")
+            ops_dl_name = st.selectbox("Chọn nhân sự (Ops):", danh_sach_ops, key="ops_name_dl")
             
-            if gc:
-                try:
-                    sh = gc.open_by_url(SHEET_MASTER_URL)
-                    ws_ops = sh.worksheet("Nhat_Ky_Ops")
-                    # Sử dụng ngay_ghi_nhan thay vì today
-                    dong_ops_moi = [str(ngay_ghi_nhan), ops_name, "Xong" if setup_phong and in_an else "Thiếu sót", co_su_co, "Xong" if bao_cao_lop else "Chưa", diem_tru_ops]
-                    ws_ops.append_row(dong_ops_moi)
-                    
-                    # Hiển thị Toast mượt mà
-                    st.toast(f"Đã lưu kết quả Ops ngày {ngay_ghi_nhan.strftime('%d/%m')} cho {ops_name}!", icon="🎉")
-                    
-                    if diem_tru_ops > 0: st.error(f"📉 Điểm trừ vận hành ca này: -{diem_tru_ops} điểm")
-                except Exception as e:
-                    st.error(f"❌ Lỗi ghi dữ liệu. Bạn đã tạo sheet 'Nhat_Ky_Ops' chưa? Chi tiết: {e}")
+            tre_luong_ops = st.number_input("Trễ Chốt lương Ops (Hạn mùng 5) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
+            
+            if st.button("💾 Lưu Phạt Deadline Ops"):
+                diem_phat_ops = tre_luong_ops * 10
+                if diem_phat_ops > 0:
+                    if gc:
+                        ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
+                        ws_ops.append_row([str(ngay_ghi_nhan), ops_dl_name, "Vi phạm Deadline", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_ops, 0, 0])
+                        st.toast(f"Đã trừ {diem_phat_ops} điểm deadline của {ops_dl_name}!", icon="🚨")
+                else: st.info("Nhân sự nộp đúng hạn, không có điểm phạt.")
 
 # ------------------------------------------
 # MÀN HÌNH 3: QUẢN LÝ NHÂN SỰ
@@ -236,8 +251,5 @@ elif menu == "👥 Quản lý Trợ giảng":
     danh_sach_ta, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
     
     if df_data is not None:
-        try:
-            bang_hien_thi = df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò']]
-            st.dataframe(bang_hien_thi, use_container_width=True, hide_index=True)
-        except KeyError: st.dataframe(df_data) 
-    else: st.warning("Chưa tải được danh sách từ Google Sheets.")
+        try: st.dataframe(df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò']], use_container_width=True, hide_index=True)
+        except: st.dataframe(df_data)
