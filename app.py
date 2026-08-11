@@ -56,10 +56,19 @@ gc = init_gspread()
 def lay_danh_sach_ta(url):
     try:
         df = pd.read_csv(url)
-        df_active = df[df['Trạng Thái'] == 'Đang làm việc']
-        return df_active['Họ và tên'].tolist(), df_active
+        if 'Trạng Thái' in df.columns:
+            df['Trạng Thái'] = df['Trạng Thái'].astype(str).str.strip()
+        
+        # 💡 ĐÃ BỎ NHÓM THAM QUAN: Chỉ hiện tên Đang làm việc & Đang thử việc để tính công
+        cac_trang_thai_active = ['Đang làm việc', 'Đang thử việc']
+        df_active = df[df['Trạng Thái'].isin(cac_trang_thai_active)]
+        
+        return df_active['Họ và tên'].tolist(), df
     except: return ["Lỗi dữ liệu"], None
 
+# ==========================================
+# 3. ĐIỀU HƯỚNG & KÉO DỮ LIỆU CHUNG
+# ==========================================
 with st.sidebar:
     st.markdown("### 🔴 KB-LAB")
     st.caption("*Kiến tạo chuẩn mực không gian tri thức hiện đại*")
@@ -67,6 +76,7 @@ with st.sidebar:
     menu = st.radio("MENU QUẢN LÝ", ["🏠 Tổng quan", "👥 Quản lý Trợ giảng", "📝 Đánh giá công việc"])
 
 today = datetime.date.today()
+danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
 
 # ------------------------------------------
 # MÀN HÌNH 1: DASHBOARD & XẾP HẠNG
@@ -74,6 +84,25 @@ today = datetime.date.today()
 if menu == "🏠 Tổng quan":
     st.title("Bảng Điều Khiển & Xếp Hạng Nhân Sự")
     
+    # --- PHẦN 1: THỐNG KÊ NHÂN SỰ TỔNG QUAN ---
+    if df_data is not None and 'Trạng Thái' in df_data.columns:
+        st.subheader("📊 Hiện Trạng Đội Ngũ Nhân Sự")
+        
+        dang_lam = len(df_data[df_data['Trạng Thái'] == 'Đang làm việc'])
+        thu_viec = len(df_data[df_data['Trạng Thái'] == 'Đang thử việc'])
+        tham_quan = len(df_data[df_data['Trạng Thái'] == 'Đang trong 7 ngày tham quan'])
+        pending = len(df_data[df_data['Trạng Thái'] == 'Pending'])
+        da_nghi = len(df_data[df_data['Trạng Thái'] == 'Đã Nghỉ'])
+        
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("🟢 Đang làm việc", dang_lam)
+        c2.metric("🔵 Đang thử việc", thu_viec)
+        c3.metric("🟤 Tham quan (7 ngày)", tham_quan)
+        c4.metric("🟡 Pending (Chờ việc)", pending)
+        c5.metric("🔴 Đã Nghỉ", da_nghi)
+        st.markdown("---")
+    
+    # --- PHẦN 2: THỐNG KÊ KPI & LEADERBOARD ---
     if gc:
         try:
             sh = gc.open_by_url(SHEET_MASTER_URL)
@@ -89,7 +118,6 @@ if menu == "🏠 Tổng quan":
             df_log = pd.concat([df_ta, df_ops], ignore_index=True)
             
             if not df_log.empty:
-                # Chống sập App nếu thiếu cột
                 if 'Điểm cộng' not in df_log.columns: df_log['Điểm cộng'] = 0
                 if 'Điểm trừ' not in df_log.columns: df_log['Điểm trừ'] = 0
                 if 'Tên Nhân Sự' not in df_log.columns: df_log['Tên Nhân Sự'] = "Chưa cập nhật"
@@ -97,13 +125,12 @@ if menu == "🏠 Tổng quan":
                 for col in ['Điểm trừ', 'Điểm cộng']:
                     df_log[col] = pd.to_numeric(df_log[col], errors='coerce').fillna(0)
 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Tổng lượt ghi nhận", str(len(df_log)))
-                col2.metric("Tổng điểm Cộng (Toàn Team)", str(df_log['Điểm cộng'].sum()), "Tích cực")
-                col3.metric("Tổng điểm Trừ (Toàn Team)", str(df_log['Điểm trừ'].sum()), "Cần khắc phục", delta_color="inverse")
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                col_kpi1.metric("Tổng lượt ghi nhận ca làm", str(len(df_log)))
+                col_kpi2.metric("Tổng điểm Cộng (Toàn Team)", str(df_log['Điểm cộng'].sum()), "Tích cực")
+                col_kpi3.metric("Tổng điểm Trừ (Toàn Team)", str(df_log['Điểm trừ'].sum()), "Cần khắc phục", delta_color="inverse")
                 st.markdown("---")
                 
-                # BẢNG XẾP HẠNG
                 st.subheader("🏆 Bảng Xếp Hạng KPI (Quỹ chuẩn: 100đ/tháng)")
                 
                 df_ranking = df_log.groupby('Tên Nhân Sự').agg(
@@ -129,8 +156,8 @@ if menu == "🏠 Tổng quan":
                     },
                     hide_index=True, use_container_width=True
                 )
-            else: st.info("Chưa có dữ liệu. Hãy ghi nhận ca làm đầu tiên!")
-        except Exception as e: st.warning(f"Lỗi hệ thống: {e}")
+            else: st.info("Chưa có dữ liệu. Hãy ghi nhận ca làm đầu tiên ở mục Đánh giá công việc!")
+        except Exception as e: st.warning(f"Lỗi hệ thống đọc dữ liệu Gspread: {e}")
     else: st.error("Chưa kết nối API Key.")
 
 # ------------------------------------------
@@ -144,8 +171,6 @@ elif menu == "📝 Đánh giá công việc":
     
     doi_tuong = st.radio("Bộ phận đánh giá:", ["👥 Trợ giảng Chuyên môn (TA)", "⚙️ Trợ giảng Vận hành (Ops)"], horizontal=True)
     st.markdown("---")
-    
-    danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
     
     tab_daily, tab_deadline = st.tabs(["📅 Check-in Hàng Ngày", "🚩 Tổng Kết & Chấm Điểm Tháng"])
 
@@ -197,7 +222,6 @@ elif menu == "📝 Đánh giá công việc":
                 thuong_baogiang = st.checkbox("⭐ Báo giảng viết đầy đủ, nộp sớm trước hạn (+5đ)")
                 thuong_idea = st.checkbox("⭐ Đóng góp idea/góp ý phát triển trung tâm (+5đ)")
             
-            # Ô nhập liệu thông minh: Chỉ hiện ra khi tick chọn tính năng góp ý
             idea_text = ""
             if thuong_idea:
                 idea_text = st.text_input("💡 Nhập chi tiết ý tưởng/góp ý của bạn TA này (sẽ lưu vào file báo cáo):")
@@ -206,7 +230,6 @@ elif menu == "📝 Đánh giá công việc":
                 diem_phat_dl = (tre_ph * 10) + (tre_bg * 5) + (tre_luong * 10)
                 diem_cong_thang = (5 if thuong_feedback else 0) + (10 if thuong_diemcao else 0) + (5 if thuong_baogiang else 0) + (5 if thuong_idea else 0)
                 
-                # Tạo chuỗi ghi chú để lưu vào Excel
                 ghi_chu_list = []
                 if diem_phat_dl > 0: ghi_chu_list.append(f"Trễ DL: {tre_ph}d PH, {tre_bg}d BG, {tre_luong}d Lương")
                 if thuong_idea and idea_text: ghi_chu_list.append(f"Idea: {idea_text}")
@@ -226,9 +249,10 @@ elif menu == "📝 Đánh giá công việc":
     # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS)
     # ==========================================
     else:
-        try: danh_sach_ops = df_data[df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)]['Họ và tên'].tolist()
+        try: 
+            danh_sach_ops = df_data[(df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)) & (df_data['Họ và tên'].isin(danh_sach_nhan_su))]['Họ và tên'].tolist()
+            if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su
         except: danh_sach_ops = danh_sach_nhan_su
-        if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su
             
         with tab_daily:
             st.subheader("Bảng Đánh Giá Task Hàng Ngày (Ops)")
@@ -264,18 +288,22 @@ elif menu == "📝 Đánh giá công việc":
                 diem_phat_ops = tre_luong_ops * 10
                 if diem_phat_ops > 0:
                     if gc:
-                        ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
-                        ws_ops.append_row([str(ngay_ghi_nhan), ops_dl_name, "Vi phạm Deadline", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_ops, 0, 0])
-                        st.toast(f"Đã trừ {diem_phat_ops} điểm deadline của {ops_dl_name}!", icon="🚨")
+                        try:
+                            ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
+                            ws_ops.append_row([str(ngay_ghi_nhan), ops_dl_name, "Vi phạm Deadline", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_ops, 0, 0])
+                            st.toast(f"Đã trừ {diem_phat_ops} điểm deadline của {ops_dl_name}!", icon="🚨")
+                        except Exception as e: st.error(f"Lỗi: {e}")
                 else: st.info("Nhân sự nộp đúng hạn, không có điểm phạt.")
 
 # ------------------------------------------
 # MÀN HÌNH 3: QUẢN LÝ NHÂN SỰ
 # ------------------------------------------
 elif menu == "👥 Quản lý Trợ giảng":
-    st.title("Hồ Sơ & Điều Phối Nhân Sự")
-    danh_sach_ta, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
+    st.title("Hồ Sơ & Danh Bạ Nhân Sự")
     
     if df_data is not None:
-        try: st.dataframe(df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò']], use_container_width=True, hide_index=True)
-        except: st.dataframe(df_data)
+        try:
+            bang_hien_thi = df_data[['Họ và tên', 'Số điện thoại', 'Email', 'Vai trò', 'Trạng Thái']]
+            st.dataframe(bang_hien_thi, use_container_width=True, hide_index=True)
+        except KeyError: st.dataframe(df_data) 
+    else: st.warning("Chưa tải được danh sách từ Google Sheets.")
