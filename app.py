@@ -59,12 +59,16 @@ def lay_danh_sach_ta(url):
         if 'Trạng Thái' in df.columns:
             df['Trạng Thái'] = df['Trạng Thái'].astype(str).str.strip()
         
-        # 💡 ĐÃ BỎ NHÓM THAM QUAN: Chỉ hiện tên Đang làm việc & Đang thử việc để tính công
         cac_trang_thai_active = ['Đang làm việc', 'Đang thử việc']
         df_active = df[df['Trạng Thái'].isin(cac_trang_thai_active)]
         
         return df_active['Họ và tên'].tolist(), df
     except: return ["Lỗi dữ liệu"], None
+
+# Hàm hỗ trợ tải CSV
+@st.cache_data
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8-sig')
 
 # ==========================================
 # 3. ĐIỀU HƯỚNG & KÉO DỮ LIỆU CHUNG
@@ -79,30 +83,21 @@ today = datetime.date.today()
 danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
 
 # ------------------------------------------
-# MÀN HÌNH 1: DASHBOARD & XẾP HẠNG
+# MÀN HÌNH 1: DASHBOARD CHỐT CÔNG CUỐI THÁNG
 # ------------------------------------------
 if menu == "🏠 Tổng quan":
-    st.title("Bảng Điều Khiển & Xếp Hạng Nhân Sự")
+    st.title("Bảng Điều Khiển & Chốt Công Cuối Tháng")
     
-    # --- PHẦN 1: THỐNG KÊ NHÂN SỰ TỔNG QUAN ---
-    if df_data is not None and 'Trạng Thái' in df_data.columns:
-        st.subheader("📊 Hiện Trạng Đội Ngũ Nhân Sự")
-        
-        dang_lam = len(df_data[df_data['Trạng Thái'] == 'Đang làm việc'])
-        thu_viec = len(df_data[df_data['Trạng Thái'] == 'Đang thử việc'])
-        tham_quan = len(df_data[df_data['Trạng Thái'] == 'Đang trong 7 ngày tham quan'])
-        pending = len(df_data[df_data['Trạng Thái'] == 'Pending'])
-        da_nghi = len(df_data[df_data['Trạng Thái'] == 'Đã Nghỉ'])
-        
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("🟢 Đang làm việc", dang_lam)
-        c2.metric("🔵 Đang thử việc", thu_viec)
-        c3.metric("🟤 Tham quan (7 ngày)", tham_quan)
-        c4.metric("🟡 Pending (Chờ việc)", pending)
-        c5.metric("🔴 Đã Nghỉ", da_nghi)
-        st.markdown("---")
+    # BỘ LỌC THỜI GIAN
+    st.markdown("### 🗓️ Lọc dữ liệu theo kỳ lương")
+    col_thang, col_nam, col_trong = st.columns([1, 1, 2])
+    with col_thang:
+        thang_chon = st.selectbox("Chọn Tháng", list(range(1, 13)), index=today.month - 1)
+    with col_nam:
+        nam_chon = st.selectbox("Chọn Năm", [today.year - 1, today.year, today.year + 1], index=1)
     
-    # --- PHẦN 2: THỐNG KÊ KPI & LEADERBOARD ---
+    st.markdown("---")
+    
     if gc:
         try:
             sh = gc.open_by_url(SHEET_MASTER_URL)
@@ -112,50 +107,87 @@ if menu == "🏠 Tổng quan":
             ws_ops = sh.worksheet("Nhat_Ky_Ops")
             df_ops = pd.DataFrame(ws_ops.get_all_records())
             
-            if not df_ta.empty: df_ta = df_ta.rename(columns={'Tên TA': 'Tên Nhân Sự'})
-            if not df_ops.empty: df_ops = df_ops.rename(columns={'Tên Ops': 'Tên Nhân Sự'})
+            # Tiền xử lý dữ liệu TA
+            if not df_ta.empty: 
+                df_ta = df_ta.rename(columns={'Tên TA': 'Tên Nhân Sự'})
+                if 'Số ca' not in df_ta.columns: df_ta['Số ca'] = 0
+                df_ta['Số giờ'] = 0 
+                
+            # Tiền xử lý dữ liệu Ops
+            if not df_ops.empty: 
+                df_ops = df_ops.rename(columns={'Tên Ops': 'Tên Nhân Sự'})
+                if 'Số giờ' not in df_ops.columns: df_ops['Số giờ'] = 0
+                df_ops['Số ca'] = 0 
             
-            df_log = pd.concat([df_ta, df_ops], ignore_index=True)
+            df_log_full = pd.concat([df_ta, df_ops], ignore_index=True)
             
-            if not df_log.empty:
-                if 'Điểm cộng' not in df_log.columns: df_log['Điểm cộng'] = 0
-                if 'Điểm trừ' not in df_log.columns: df_log['Điểm trừ'] = 0
-                if 'Tên Nhân Sự' not in df_log.columns: df_log['Tên Nhân Sự'] = "Chưa cập nhật"
+            if not df_log_full.empty:
+                # ÉP KIỂU NGÀY THÁNG ĐỂ LỌC
+                if 'Ngày' in df_log_full.columns:
+                    df_log_full['Ngày_DT'] = pd.to_datetime(df_log_full['Ngày'], errors='coerce')
+                    # CHỈ LẤY DỮ LIỆU CỦA THÁNG ĐÃ CHỌN
+                    df_log = df_log_full[(df_log_full['Ngày_DT'].dt.month == thang_chon) & (df_log_full['Ngày_DT'].dt.year == nam_chon)]
+                else:
+                    df_log = pd.DataFrame()
 
-                for col in ['Điểm trừ', 'Điểm cộng']:
-                    df_log[col] = pd.to_numeric(df_log[col], errors='coerce').fillna(0)
+                if not df_log.empty:
+                    if 'Điểm cộng' not in df_log.columns: df_log['Điểm cộng'] = 0
+                    if 'Điểm trừ' not in df_log.columns: df_log['Điểm trừ'] = 0
+                    if 'Tên Nhân Sự' not in df_log.columns: df_log['Tên Nhân Sự'] = "Chưa cập nhật"
 
-                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-                col_kpi1.metric("Tổng lượt ghi nhận ca làm", str(len(df_log)))
-                col_kpi2.metric("Tổng điểm Cộng (Toàn Team)", str(df_log['Điểm cộng'].sum()), "Tích cực")
-                col_kpi3.metric("Tổng điểm Trừ (Toàn Team)", str(df_log['Điểm trừ'].sum()), "Cần khắc phục", delta_color="inverse")
-                st.markdown("---")
-                
-                st.subheader("🏆 Bảng Xếp Hạng KPI (Quỹ chuẩn: 100đ/tháng)")
-                
-                df_ranking = df_log.groupby('Tên Nhân Sự').agg(
-                    Số_ca_Ghi_nhận=('Ngày', 'count'),
-                    Điểm_cộng=('Điểm cộng', 'sum'),
-                    Điểm_trừ=('Điểm trừ', 'sum')
-                ).reset_index()
-                
-                df_ranking['KPI_Cuối_Tháng'] = 100 + df_ranking['Điểm_cộng'] - df_ranking['Điểm_trừ']
-                df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
-                
-                st.dataframe(
-                    df_ranking,
-                    column_config={
-                        "Tên Nhân Sự": st.column_config.TextColumn("👤 Tên Nhân Sự", width="medium"),
-                        "Số_ca_Ghi_nhận": st.column_config.NumberColumn("📅 Tần suất"),
-                        "Điểm_cộng": st.column_config.NumberColumn("⭐ Điểm Cộng"),
-                        "Điểm_trừ": st.column_config.NumberColumn("⚠️ Điểm Trừ"),
-                        "KPI_Cuối_Tháng": st.column_config.ProgressColumn(
-                            "🔥 KPI ĐÁNH GIÁ (Trên 100)",
-                            format="%f", min_value=0, max_value=130
-                        ),
-                    },
-                    hide_index=True, use_container_width=True
-                )
+                    for col in ['Điểm trừ', 'Điểm cộng', 'Số ca', 'Số giờ']:
+                        df_log[col] = pd.to_numeric(df_log[col], errors='coerce').fillna(0)
+
+                    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                    col_kpi1.metric(f"Tổng ca làm (Tháng {thang_chon})", str(len(df_log)))
+                    col_kpi2.metric("Tổng giờ Ops", f"{df_log['Số giờ'].sum()} h")
+                    col_kpi3.metric("Tổng Điểm Cộng", str(df_log['Điểm cộng'].sum()), "Tích cực")
+                    col_kpi4.metric("Tổng Điểm Trừ", str(df_log['Điểm trừ'].sum()), "Vi phạm", delta_color="inverse")
+                    
+                    st.markdown("---")
+                    
+                    col_header, col_btn = st.columns([3, 1])
+                    with col_header:
+                        st.subheader(f"🏆 Bảng Xếp Hạng & Chốt Công (Tháng {thang_chon}/{nam_chon})")
+                    
+                    # Gom nhóm tính tổng ca, tổng giờ, và điểm
+                    df_ranking = df_log.groupby('Tên Nhân Sự').agg(
+                        Tổng_ca=('Số ca', 'sum'),
+                        Tổng_giờ=('Số giờ', 'sum'),
+                        Điểm_cộng=('Điểm cộng', 'sum'),
+                        Điểm_trừ=('Điểm trừ', 'sum')
+                    ).reset_index()
+                    
+                    df_ranking['KPI_Cuối_Tháng'] = 100 + df_ranking['Điểm_cộng'] - df_ranking['Điểm_trừ']
+                    df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
+                    
+                    # Nút tải File Excel cho kế toán
+                    with col_btn:
+                        csv = convert_df(df_ranking)
+                        st.download_button(
+                            label="📥 Tải Bảng Lương (CSV)",
+                            data=csv,
+                            file_name=f"ChotCong_Thang{thang_chon}_{nam_chon}.csv",
+                            mime="text/csv",
+                        )
+
+                    st.dataframe(
+                        df_ranking,
+                        column_config={
+                            "Tên Nhân Sự": st.column_config.TextColumn("👤 Tên Nhân Sự", width="medium"),
+                            "Tổng_ca": st.column_config.NumberColumn("🔢 Tổng Ca (TA)", format="%.1f ca"),
+                            "Tổng_giờ": st.column_config.NumberColumn("⏱️ Tổng Giờ (Ops)", format="%.2f h"),
+                            "Điểm_cộng": st.column_config.NumberColumn("⭐ Cộng"),
+                            "Điểm_trừ": st.column_config.NumberColumn("⚠️ Trừ"),
+                            "KPI_Cuối_Tháng": st.column_config.ProgressColumn(
+                                "🔥 ĐIỂM KPI (Xếp Hạng)",
+                                format="%f", min_value=0, max_value=130
+                            ),
+                        },
+                        hide_index=True, use_container_width=True
+                    )
+                else:
+                    st.info(f"Chưa có dữ liệu chấm công nào trong Tháng {thang_chon}/{nam_chon}.")
             else: st.info("Chưa có dữ liệu. Hãy ghi nhận ca làm đầu tiên ở mục Đánh giá công việc!")
         except Exception as e: st.warning(f"Lỗi hệ thống đọc dữ liệu Gspread: {e}")
     else: st.error("Chưa kết nối API Key.")
@@ -180,9 +212,13 @@ elif menu == "📝 Đánh giá công việc":
     if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
         with tab_daily:
             st.subheader("Bảng Đánh Giá Task Hàng Ngày (TA)")
-            ta_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_daily")
             
-            nguoi_di_thay = st.selectbox("👤 Đi thay cho ai? (Bỏ trống nếu đi ca chính):", [""] + danh_sach_nhan_su)
+            col_name, col_ca = st.columns([2, 1])
+            with col_name:
+                ta_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_daily")
+                nguoi_di_thay = st.selectbox("👤 Đi thay cho ai? (Bỏ trống nếu đi ca chính):", [""] + danh_sach_nhan_su)
+            with col_ca:
+                so_ca = st.number_input("🔢 Số ca chuyên môn:", min_value=0.0, max_value=5.0, value=1.0, step=0.5)
             
             st.markdown("**1. Công việc bắt buộc (Nếu thiếu sẽ bị trừ điểm):**")
             ta_t1 = st.checkbox("✅ Điểm danh chuẩn & Chuẩn bị đủ tài liệu in ấn (Nếu thiếu/sai: -2đ)", value=True)
@@ -199,10 +235,10 @@ elif menu == "📝 Đánh giá công việc":
                 if gc:
                     try:
                         ws = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA")
-                        dong_moi = [str(ngay_ghi_nhan), ta_name, "Ca làm việc", nguoi_di_thay if nguoi_di_thay else "Không", "Ghi nhận Daily", diem_tru, diem_cong, 0]
+                        dong_moi = [str(ngay_ghi_nhan), ta_name, "Ca làm việc", nguoi_di_thay if nguoi_di_thay else "Không", "Ghi nhận Daily", diem_tru, diem_cong, 0, so_ca]
                         ws.append_row(dong_moi)
-                        st.toast(f"Đã lưu Daily Task cho {ta_name}! (Trừ: {diem_tru} | Cộng: {diem_cong})", icon="🎉")
-                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
+                        st.toast(f"Đã lưu Daily Task cho {ta_name}! (Số ca: {so_ca} | Trừ: {diem_tru} | Cộng: {diem_cong})", icon="🎉")
+                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: Vui lòng thêm cột 'Số ca' vào cuối sheet Nhat_Ky_TA. Lỗi chi tiết: {e}")
         
         with tab_deadline:
             st.subheader("Tổng Kết Hiệu Suất Tháng (TA)")
@@ -240,7 +276,7 @@ elif menu == "📝 Đánh giá công việc":
                     if gc:
                         try:
                             ws = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA")
-                            ws.append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết Tháng", "Không", ghi_chu_str, diem_phat_dl, diem_cong_thang, 0])
+                            ws.append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết Tháng", "Không", ghi_chu_str, diem_phat_dl, diem_cong_thang, 0, 0])
                             st.toast(f"Đã lưu KPI tháng cho {ta_dl_name}! (Trừ: {diem_phat_dl} | Cộng: {diem_cong_thang})", icon="🌟")
                         except Exception as e: st.error(f"Lỗi: {e}")
                 else: st.info("Trợ giảng này không có vi phạm deadline cũng như điểm cộng trong tháng.")
@@ -256,7 +292,25 @@ elif menu == "📝 Đánh giá công việc":
             
         with tab_daily:
             st.subheader("Bảng Đánh Giá Task Hàng Ngày (Ops)")
+            
             ops_name = st.selectbox("Chọn nhân sự (Ops):", danh_sach_ops, key="ops_name_daily")
+            
+            # --- TÍNH TOÁN SỐ GIỜ TỰ ĐỘNG BẰNG CHECK-IN / CHECK-OUT ---
+            col_in, col_out = st.columns(2)
+            with col_in:
+                gio_vao = st.time_input("⏰ Giờ Check-in", datetime.time(17, 30))
+            with col_out:
+                gio_ra = st.time_input("⏰ Giờ Check-out", datetime.time(21, 30))
+                
+            dt_vao = datetime.datetime.combine(datetime.date.today(), gio_vao)
+            dt_ra = datetime.datetime.combine(datetime.date.today(), gio_ra)
+            if dt_ra < dt_vao: dt_ra += datetime.timedelta(days=1)
+                
+            thoi_gian_lam = dt_ra - dt_vao
+            so_gio_tinh_duoc = round(thoi_gian_lam.total_seconds() / 3600, 2)
+            
+            st.info(f"⏱️ **Hệ thống tự động chốt công:** Ca làm việc này tính {so_gio_tinh_duoc} giờ.")
+            st.markdown("---")
             
             st.markdown("**1. Công việc bắt buộc (Nếu thiếu sẽ bị trừ điểm):**")
             ops_t1 = st.checkbox("✅ Có mặt tại trung tâm đúng giờ, trước 18h15 (Nếu đi muộn: -5đ)", value=True)
@@ -274,9 +328,9 @@ elif menu == "📝 Đánh giá công việc":
                 if gc:
                     try:
                         ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
-                        ws_ops.append_row([str(ngay_ghi_nhan), ops_name, "Có lỗi" if diem_tru_ops>0 else "Tốt", "Ops", "Ghi nhận Daily", diem_tru_ops, diem_cong_ops, 0])
-                        st.toast(f"Đã lưu Daily Task Ops cho {ops_name}! (Trừ: {diem_tru_ops} | Cộng: {diem_cong_ops})", icon="🎉")
-                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
+                        ws_ops.append_row([str(ngay_ghi_nhan), ops_name, "Có lỗi" if diem_tru_ops>0 else "Tốt", "Ops", "Ghi nhận Daily", diem_tru_ops, diem_cong_ops, 0, so_gio_tinh_duoc])
+                        st.toast(f"Đã lưu Daily Task Ops cho {ops_name}! (Số giờ: {so_gio_tinh_duoc} | Trừ: {diem_tru_ops} | Cộng: {diem_cong_ops})", icon="🎉")
+                    except Exception as e: st.error(f"Lỗi ghi dữ liệu: Vui lòng thêm cột 'Số giờ' vào cuối sheet Nhat_Ky_Ops. Lỗi chi tiết: {e}")
                     
         with tab_deadline:
             st.subheader("Phạt Chậm Deadline Tháng (Ops)")
@@ -290,7 +344,7 @@ elif menu == "📝 Đánh giá công việc":
                     if gc:
                         try:
                             ws_ops = gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops")
-                            ws_ops.append_row([str(ngay_ghi_nhan), ops_dl_name, "Vi phạm Deadline", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_ops, 0, 0])
+                            ws_ops.append_row([str(ngay_ghi_nhan), ops_dl_name, "Vi phạm Deadline", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_ops, 0, 0, 0])
                             st.toast(f"Đã trừ {diem_phat_ops} điểm deadline của {ops_dl_name}!", icon="🚨")
                         except Exception as e: st.error(f"Lỗi: {e}")
                 else: st.info("Nhân sự nộp đúng hạn, không có điểm phạt.")
