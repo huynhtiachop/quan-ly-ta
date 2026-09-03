@@ -78,7 +78,6 @@ danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
 if menu == "🏠 Tổng quan & Chốt công":
     st.title("Bảng Điều Khiển & Phân Tích Dữ Liệu")
     
-    # Mặc định lọc theo tháng hiện tại
     col_thang, col_nam, col_trong = st.columns([1, 1, 2])
     with col_thang: thang_chon = st.selectbox("Chọn Tháng", list(range(1, 13)), index=today.month - 1)
     with col_nam: nam_chon = st.selectbox("Chọn Năm", [today.year - 1, today.year, today.year + 1], index=1)
@@ -92,7 +91,6 @@ if menu == "🏠 Tổng quan & Chốt công":
             ws_ops = sh.worksheet("Nhat_Ky_Ops")
             df_ops = pd.DataFrame(ws_ops.get_all_records())
             
-            # Tiền xử lý dữ liệu để ghép bảng
             if not df_ta.empty: 
                 df_ta = df_ta.rename(columns={'Tên TA': 'Tên Nhân Sự'})
                 if 'Số ca' not in df_ta.columns: df_ta['Số ca'] = 0
@@ -105,7 +103,6 @@ if menu == "🏠 Tổng quan & Chốt công":
             
             df_log_full = pd.concat([df_ta, df_ops], ignore_index=True)
             
-            # Lọc dữ liệu theo tháng đã chọn
             if not df_log_full.empty and 'Ngày' in df_log_full.columns:
                 df_log_full['Ngày_DT'] = pd.to_datetime(df_log_full['Ngày'], errors='coerce')
                 df_log = df_log_full[(df_log_full['Ngày_DT'].dt.month == thang_chon) & (df_log_full['Ngày_DT'].dt.year == nam_chon)]
@@ -120,12 +117,11 @@ if menu == "🏠 Tổng quan & Chốt công":
 
                 col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
                 col_kpi1.metric(f"Tổng ca làm (Tháng {thang_chon})", f"{df_log['Số ca'].sum():.1f} ca")
-                col_kpi2.metric("Tổng giờ Ops", f"{df_log['Số giờ'].sum():.1f} h")
+                col_kpi2.metric("Tổng giờ Ops", f"{df_log['Số giờ'].sum():.2f} h")
                 col_kpi3.metric("Tổng Điểm Cộng", str(df_log['Điểm cộng'].sum()), "Tích cực")
                 col_kpi4.metric("Tổng Điểm Trừ", str(df_log['Điểm trừ'].sum()), "Vi phạm", delta_color="inverse")
                 st.markdown("---")
                 
-                # Bảng xếp hạng nhóm theo Tên
                 df_ranking = df_log.groupby('Tên Nhân Sự').agg(
                     Tổng_ca=('Số ca', 'sum'), Tổng_giờ=('Số giờ', 'sum'),
                     Điểm_cộng=('Điểm cộng', 'sum'), Điểm_trừ=('Điểm trừ', 'sum')
@@ -134,8 +130,6 @@ if menu == "🏠 Tổng quan & Chốt công":
                 df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
                 
                 st.subheader("📈 Phân Tích Dữ Liệu Trực Quan")
-                
-                # Biểu đồ Cột và Tròn
                 col_chart1, col_chart2 = st.columns(2)
                 with col_chart1:
                     top_5 = df_ranking.head(5).sort_values(by="KPI_Cuối_Tháng", ascending=True) 
@@ -171,7 +165,7 @@ if menu == "🏠 Tổng quan & Chốt công":
     else: st.error("Chưa kết nối API Key.")
 
 # ------------------------------------------
-# MÀN HÌNH 2: ĐÁNH GIÁ CÔNG VIỆC (ĐÃ TỐI ƯU GỌN GÀNG)
+# MÀN HÌNH 2: ĐÁNH GIÁ CÔNG VIỆC HÀNG LOẠT
 # ------------------------------------------
 elif menu == "📝 Đánh giá Hàng loạt":
     st.title("Phân Hệ Đánh Giá & Chấm Công Hàng Loạt")
@@ -181,79 +175,88 @@ elif menu == "📝 Đánh giá Hàng loạt":
     doi_tuong = st.radio("Bộ phận đánh giá:", ["👥 Trợ giảng Chuyên môn (TA)", "⚙️ Trợ giảng Vận hành (Ops)"], horizontal=True)
     st.markdown("---")
     
-    tab_daily, tab_deadline = st.tabs(["📅 Chấm Công Hàng Loạt", "🚩 Báo cáo Cuối Tháng (KPI Phạt)"])
+    tab_daily, tab_deadline = st.tabs(["📅 Chấm Công & KPI Hàng Ngày", "🚩 Báo cáo Cuối Tuần / Cuối Tháng"])
 
     # ==========================================
     # LUỒNG 1: TRỢ GIẢNG CHUYÊN MÔN (TA)
     # ==========================================
     if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
         with tab_daily:
-            st.info("💡 Hướng dẫn: Tích vào ô **[Làm ca này?]** cho những bạn có đi làm. Bấm nút màu đỏ ở cuối bảng để LƯU.")
+            st.info("💡 **MẸO NHẬP NHANH:** Tích vào ô **[✅ Đi làm]** cho những bạn có đi làm. Tích báo lỗi nếu có. Ca hoàn hảo tích ô Cuối cùng.")
+            
             df_input_ta = pd.DataFrame({
-                "Làm ca này?": [False] * len(danh_sach_nhan_su),
+                "Đi làm": [False] * len(danh_sach_nhan_su),
                 "Tên Nhân Sự": danh_sach_nhan_su,
-                "Đi muộn (-10đ)": [False] * len(danh_sach_nhan_su),
-                "Thiếu tài liệu (-2đ)": [False] * len(danh_sach_nhan_su),
-                "Thiếu BTVN (-5đ)": [False] * len(danh_sach_nhan_su),
-                "Thiếu Điểm (-5đ)": [False] * len(danh_sach_nhan_su),
-                "Thưởng Hỗ trợ (+5đ)": [False] * len(danh_sach_nhan_su),
+                "Lỗi Check-in/out": [False] * len(danh_sach_nhan_su),
+                "Lỗi Điểm danh": [False] * len(danh_sach_nhan_su),
+                "Lỗi BTVN": [False] * len(danh_sach_nhan_su),
+                "Lớp có HS nghỉ": [False] * len(danh_sach_nhan_su),
+                "Ca hoàn hảo (Cộng điểm)": [False] * len(danh_sach_nhan_su),
                 "Số ca": [1.0] * len(danh_sach_nhan_su)
             })
 
             edited_ta = st.data_editor(
                 df_input_ta,
                 column_config={
-                    "Làm ca này?": st.column_config.CheckboxColumn("✅ Làm ca này?", default=False),
+                    "Đi làm": st.column_config.CheckboxColumn("✅ Đi làm?", default=False),
                     "Tên Nhân Sự": st.column_config.TextColumn("👤 Họ và Tên", disabled=True), 
-                    "Đi muộn (-10đ)": st.column_config.CheckboxColumn("⚠️ Đi muộn"),
-                    "Thiếu tài liệu (-2đ)": st.column_config.CheckboxColumn("⚠️ Lỗi In ấn"),
-                    "Thiếu BTVN (-5đ)": st.column_config.CheckboxColumn("⚠️ Lỗi BTVN"),
-                    "Thiếu Điểm (-5đ)": st.column_config.CheckboxColumn("⚠️ Lỗi Điểm"),
-                    "Thưởng Hỗ trợ (+5đ)": st.column_config.CheckboxColumn("⭐ Khen thưởng"),
-                    "Số ca": st.column_config.NumberColumn("🔢 Ca làm", min_value=0.5, step=0.5, format="%.1f")
+                    "Lỗi Check-in/out": st.column_config.CheckboxColumn("⚠️ Thiếu Checkin/out (-5đ)"),
+                    "Lỗi Điểm danh": st.column_config.CheckboxColumn("⚠️ Lỗi Đ.danh App/Sheet (-5đ)"),
+                    "Lỗi BTVN": st.column_config.CheckboxColumn("⚠️ Sự cố BTVN (-5đ)"),
+                    "Lớp có HS nghỉ": st.column_config.CheckboxColumn("⚠️ Có HS vắng (-2đ)"),
+                    "Ca hoàn hảo (Cộng điểm)": st.column_config.CheckboxColumn("⭐ Ca Hoàn Hảo (+10đ)"),
+                    "Số ca": st.column_config.NumberColumn("🔢 Nhập Số ca", min_value=0.5, step=0.5, format="%.1f")
                 },
                 hide_index=True, use_container_width=True
             )
 
             if st.button("🚀 LƯU ĐÁNH GIÁ TẤT CẢ TA"):
-                danh_sach_di_lam = edited_ta[edited_ta["Làm ca này?"] == True]
+                danh_sach_di_lam = edited_ta[edited_ta["Đi làm"] == True]
                 if danh_sach_di_lam.empty: st.warning("Vui lòng tích chọn ít nhất 1 người đi làm!")
                 else:
                     rows_to_insert = []
                     for index, row in danh_sach_di_lam.iterrows():
-                        diem_tru = (10 if row['Đi muộn (-10đ)'] else 0) + (2 if row['Thiếu tài liệu (-2đ)'] else 0) + (5 if row['Thiếu BTVN (-5đ)'] else 0) + (5 if row['Thiếu Điểm (-5đ)'] else 0)
-                        diem_cong = 5 if row['Thưởng Hỗ trợ (+5đ)'] else 0
+                        diem_tru = (5 if row['Lỗi Check-in/out'] else 0) + (5 if row['Lỗi Điểm danh'] else 0) + (5 if row['Lỗi BTVN'] else 0) + (2 if row['Lớp có HS nghỉ'] else 0)
+                        diem_cong = 10 if row['Ca hoàn hảo (Cộng điểm)'] else 0
+                        
                         dong_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru > 0 else "Hoàn thành", "Không", "Ghi nhận Hàng Loạt", diem_tru, diem_cong, 0, float(row['Số ca'])]
                         rows_to_insert.append(dong_moi)
 
                     if gc and rows_to_insert:
                         try:
                             gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_rows(rows_to_insert)
-                            st.success(f"✅ Đã lưu chấm công cho {len(rows_to_insert)} TA!")
+                            st.success(f"✅ Đã lưu chấm công Hàng ngày cho {len(rows_to_insert)} TA!")
                         except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
         
         with tab_deadline:
-            st.subheader("Cập nhật KPI Cuối tháng (Cá nhân)")
+            st.subheader("Báo cáo Tuần / Tháng (Phạt Deadline & Khen thưởng)")
             ta_dl_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_dl")
-            st.markdown("**1. Phạt Deadline:**")
-            tre_ph = st.number_input("Trễ Báo cáo Phụ huynh (Hạn mùng 1) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
-            tre_bg = st.number_input("Trễ Báo giảng (Hạn mùng 5) [-5đ/ngày]:", min_value=0, max_value=30, value=0)
-            tre_luong = st.number_input("Trễ Chốt lương TA (Hạn mùng 8) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
-            st.markdown("**2. Thưởng:**")
-            thuong_feedback = st.checkbox("⭐ Phản hồi tốt từ học sinh (+5đ)")
-            thuong_diemcao = st.checkbox("⭐ Học sinh đạt điểm cao (+10đ)")
+            st.markdown("**1. Vi phạm Báo cáo / Họp hành (Tính điểm trừ):**")
+            vang_hop = st.number_input("Số buổi vắng họp giao ban tuần (-5đ/buổi):", min_value=0, max_value=4, value=0)
+            tre_bc_lop = st.number_input("Trễ Báo cáo lớp - Hạn mùng 1 (-10đ/ngày):", min_value=0, max_value=30, value=0)
+            tre_bg = st.number_input("Trễ Báo giảng - Hạn từ 1 đến 5 (-5đ/ngày):", min_value=0, max_value=30, value=0)
+            tre_luong = st.number_input("Trễ Bảng lương - Hạn mùng 5 (-10đ/ngày):", min_value=0, max_value=30, value=0)
+            st.markdown("**2. Khen thưởng Đặc biệt (Tính điểm cộng):**")
+            thuong_feedback = st.checkbox("⭐ Phản hồi tốt từ phụ huynh/học sinh (+5đ)")
+            thuong_diemcao = st.checkbox("⭐ Học sinh thi đạt điểm cao vượt kỳ vọng (+10đ)")
 
-            if st.button("💾 Lưu KPI Tháng"):
-                diem_phat_dl = (tre_ph * 10) + (tre_bg * 5) + (tre_luong * 10)
+            if st.button("💾 LƯU BÁO CÁO TUẦN/THÁNG"):
+                diem_phat_dl = (vang_hop * 5) + (tre_bc_lop * 10) + (tre_bg * 5) + (tre_luong * 10)
                 diem_cong_thang = (5 if thuong_feedback else 0) + (10 if thuong_diemcao else 0)
+                ghi_chu = []
+                if vang_hop > 0: ghi_chu.append(f"Vắng họp: {vang_hop}b")
+                if tre_bc_lop > 0: ghi_chu.append(f"Trễ BCL: {tre_bc_lop}d")
+                if tre_bg > 0: ghi_chu.append(f"Trễ BG: {tre_bg}d")
+                if tre_luong > 0: ghi_chu.append(f"Trễ Lương: {tre_luong}d")
+                
                 if diem_phat_dl > 0 or diem_cong_thang > 0:
                     if gc:
-                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết", "Không", "Tổng kết tháng", diem_phat_dl, diem_cong_thang, 0, 0])
-                        st.toast(f"Đã lưu KPI tháng cho {ta_dl_name}!", icon="🌟")
+                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng tháng", diem_phat_dl, diem_cong_thang, 0, 0])
+                        st.toast(f"Đã lưu Báo cáo Phạt/Thưởng cho {ta_dl_name}!", icon="🌟")
                 else: st.info("Không có chỉ số nào để lưu.")
 
     # ==========================================
-    # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS)
+    # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS) - TỰ TÍNH GIỜ THEO CHECK IN/OUT
     # ==========================================
     else:
         try: danh_sach_ops = df_data[(df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)) & (df_data['Họ và tên'].isin(danh_sach_nhan_su))]['Họ và tên'].tolist()
@@ -261,48 +264,73 @@ elif menu == "📝 Đánh giá Hàng loạt":
         if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su
             
         with tab_daily:
-            st.info("💡 Hướng dẫn: Tích vào ô **[Làm ca này?]** cho Ops đi làm. Bấm nút màu đỏ ở cuối bảng để LƯU.")
+            st.info("💡 **TỰ ĐỘNG TÍNH GIỜ:** Điền Giờ Check-in & Check-out, hệ thống sẽ tự động trừ và quy đổi ra Số Giờ làm cho Kế toán khi bạn bấm LƯU.")
+            
+            # Khởi tạo giá trị thời gian mặc định
+            default_in = datetime.time(17, 30)
+            default_out = datetime.time(21, 30)
+            
             df_input_ops = pd.DataFrame({
-                "Làm ca này?": [False] * len(danh_sach_ops),
+                "Đi làm": [False] * len(danh_sach_ops),
                 "Tên Nhân Sự": danh_sach_ops,
+                "Check-in": [default_in] * len(danh_sach_ops),
+                "Check-out": [default_out] * len(danh_sach_ops),
                 "Đi muộn (-5đ)": [False] * len(danh_sach_ops),
                 "Lỗi Cơ sở VC (-2đ)": [False] * len(danh_sach_ops),
                 "Lỗi Sĩ số (-5đ)": [False] * len(danh_sach_ops),
                 "Lỗi Phàn nàn (-15đ)": [False] * len(danh_sach_ops),
-                "Thưởng (+5đ)": [False] * len(danh_sach_ops),
-                "Số giờ làm": [4.0] * len(danh_sach_ops)
+                "Thưởng (+5đ)": [False] * len(danh_sach_ops)
             })
 
             edited_ops = st.data_editor(
                 df_input_ops,
                 column_config={
-                    "Làm ca này?": st.column_config.CheckboxColumn("✅ Làm ca này?", default=False),
+                    "Đi làm": st.column_config.CheckboxColumn("✅ Đi làm?", default=False),
                     "Tên Nhân Sự": st.column_config.TextColumn("👤 Họ và Tên", disabled=True),
+                    "Check-in": st.column_config.TimeColumn("⏰ Giờ IN", format="HH:mm"),
+                    "Check-out": st.column_config.TimeColumn("⏰ Giờ OUT", format="HH:mm"),
                     "Đi muộn (-5đ)": st.column_config.CheckboxColumn("⚠️ Đi muộn"),
                     "Lỗi Cơ sở VC (-2đ)": st.column_config.CheckboxColumn("⚠️ Lỗi CSVC"),
                     "Lỗi Sĩ số (-5đ)": st.column_config.CheckboxColumn("⚠️ Lỗi Sĩ số"),
                     "Lỗi Phàn nàn (-15đ)": st.column_config.CheckboxColumn("⚠️ Phàn nàn"),
-                    "Thưởng (+5đ)": st.column_config.CheckboxColumn("⭐ Khen thưởng"),
-                    "Số giờ làm": st.column_config.NumberColumn("⏱️ Số giờ", min_value=0.5, step=0.5, format="%.1f")
+                    "Thưởng (+5đ)": st.column_config.CheckboxColumn("⭐ Xử lý sự cố")
                 },
                 hide_index=True, use_container_width=True
             )
 
             if st.button("🚀 LƯU ĐÁNH GIÁ TẤT CẢ OPS"):
-                danh_sach_ops_lam = edited_ops[edited_ops["Làm ca này?"] == True]
-                if danh_sach_ops_lam.empty: st.warning("Vui lòng tích chọn ít nhất 1 người đi làm!")
+                danh_sach_ops_lam = edited_ops[edited_ops["Đi làm"] == True]
+                if danh_sach_ops_lam.empty: st.warning("Vui lòng tích chọn ít nhất 1 Ops đi làm!")
                 else:
                     rows_ops_insert = []
+                    log_gio_lam = [] # Ghi chú để hiện thông báo tổng giờ
+                    
                     for index, row in danh_sach_ops_lam.iterrows():
+                        # Thuật toán tính giờ tự động
+                        in_t = row['Check-in']
+                        out_t = row['Check-out']
+                        
+                        dt_in = datetime.datetime.combine(today, in_t)
+                        dt_out = datetime.datetime.combine(today, out_t)
+                        
+                        # Xử lý làm xuyên đêm (Giờ ra nhỏ hơn giờ vào)
+                        if dt_out < dt_in:
+                            dt_out += datetime.timedelta(days=1)
+                            
+                        # Tính tổng số giờ thập phân
+                        so_gio_thuc_te = round((dt_out - dt_in).total_seconds() / 3600.0, 2)
+                        
                         diem_tru_ops = (5 if row['Đi muộn (-5đ)'] else 0) + (2 if row['Lỗi Cơ sở VC (-2đ)'] else 0) + (5 if row['Lỗi Sĩ số (-5đ)'] else 0) + (15 if row['Lỗi Phàn nàn (-15đ)'] else 0)
                         diem_cong_ops = 5 if row['Thưởng (+5đ)'] else 0
-                        dong_ops_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru_ops > 0 else "Hoàn thành", "Ops", "Ghi nhận Hàng loạt", diem_tru_ops, diem_cong_ops, 0, float(row['Số giờ làm'])]
+                        dong_ops_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru_ops > 0 else "Hoàn thành", "Ops", "Ghi nhận Hàng loạt", diem_tru_ops, diem_cong_ops, 0, so_gio_thuc_te]
+                        
                         rows_ops_insert.append(dong_ops_moi)
+                        log_gio_lam.append(f"{row['Tên Nhân Sự']}: {so_gio_thuc_te}h")
 
                     if gc and rows_ops_insert:
                         try:
                             gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_rows(rows_ops_insert)
-                            st.success(f"✅ Đã lưu chấm công cho {len(rows_ops_insert)} Ops!")
+                            st.success(f"✅ Đã lưu {len(rows_ops_insert)} nhân sự Ops. Chi tiết tính giờ: {', '.join(log_gio_lam)}")
                         except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
                     
         with tab_deadline:
