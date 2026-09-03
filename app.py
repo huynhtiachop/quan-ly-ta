@@ -184,10 +184,9 @@ elif menu == "📝 Đánh giá công việc":
     doi_tuong = st.radio("Bộ phận đánh giá:", ["👥 Trợ giảng Chuyên môn (TA)", "⚙️ Trợ giảng Vận hành (Ops)"], horizontal=True)
     st.markdown("---")
     
-    # THÊM TAB IMPORT DỮ LIỆU
     tab_daily, tab_deadline, tab_import = st.tabs(["📅 Chấm Công Hàng Loạt", "🚩 Tổng Kết Phạt Tháng", "⬆️ Nhập Liệu Từ Excel (Import)"])
 
-    # --- TAB IMPORT EXCEL ---
+    # --- TAB IMPORT EXCEL (ĐÃ FIX LỖI TỰ ĐỘNG) ---
     with tab_import:
         st.subheader("⬆️ Tải lên dữ liệu từ File Excel")
         st.info("Tính năng này giúp bạn import file lịch sử (như file Tổng Hợp Tháng 8) vào hệ thống chỉ bằng 1 nút bấm.")
@@ -196,40 +195,59 @@ elif menu == "📝 Đánh giá công việc":
         
         if uploaded_file is not None:
             try:
-                # Đọc dữ liệu từ file Excel tải lên
                 df_import = pd.read_excel(uploaded_file)
                 st.write("🔍 **Xem trước dữ liệu tải lên:**")
-                st.dataframe(df_import.head(10))
+                st.dataframe(df_import.head(5))
                 
-                # Cấu hình map cột dữ liệu
                 st.markdown("### ⚙️ Ghép nối cột dữ liệu (Mapping)")
-                col_name_excel = st.selectbox("Chọn cột chứa TÊN NHÂN SỰ:", df_import.columns)
+                
+                danh_sach_cot = df_import.columns.tolist()
+                # Chọn cột Tên
+                col_name_excel = st.selectbox("Chọn cột chứa TÊN NHÂN SỰ:", danh_sach_cot, index=0)
+                
+                # Tự động chọn cột thứ 2 làm mặc định cho Số giờ/ca để tránh lỗi trùng lặp
+                idx_mac_dinh = 1 if len(danh_sach_cot) > 1 else 0
                 
                 if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
-                    col_value_excel = st.selectbox("Chọn cột chứa SỐ CA (Buổi):", df_import.columns)
+                    col_value_excel = st.selectbox("Chọn cột chứa SỐ CA (Buổi):", danh_sach_cot, index=idx_mac_dinh)
+                    
                     if st.button("🚀 XÁC NHẬN ĐẨY LÊN HỆ THỐNG (TA)", type="primary"):
-                        rows_to_insert = []
-                        for _, row in df_import.iterrows():
-                            # Mảng đẩy vào Sheet Nhat_Ky_TA
-                            dong_moi = [str(ngay_ghi_nhan), str(row[col_name_excel]).strip(), "Hoàn thành", "Không", "Import từ Excel", 0, 0, 0, float(row[col_value_excel])]
-                            rows_to_insert.append(dong_moi)
+                        if col_name_excel == col_value_excel:
+                            st.error("⚠️ Lỗi: Bạn đang chọn trùng 1 cột cho cả TÊN và SỐ CA. Hãy chọn lại ô bên trên!")
+                        else:
+                            rows_to_insert = []
+                            for _, row in df_import.iterrows():
+                                try:
+                                    # Ép kiểu an toàn, bỏ qua các dòng toàn chữ
+                                    so_ca_val = float(row[col_value_excel])
+                                    dong_moi = [str(ngay_ghi_nhan), str(row[col_name_excel]).strip(), "Hoàn thành", "Không", "Import từ Excel", 0, 0, 0, so_ca_val]
+                                    rows_to_insert.append(dong_moi)
+                                except ValueError:
+                                    continue 
 
-                        if gc and rows_to_insert:
-                            gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_rows(rows_to_insert)
-                            st.success(f"✅ Đã import thành công {len(rows_to_insert)} nhân sự vào bảng Trợ giảng Chuyên môn!")
-                            
+                            if gc and rows_to_insert:
+                                gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_rows(rows_to_insert)
+                                st.success(f"✅ Đã import thành công {len(rows_to_insert)} nhân sự vào bảng Trợ giảng Chuyên môn!")
+                                
                 else: # Đẩy vào Ops
-                    col_value_excel = st.selectbox("Chọn cột chứa SỐ GIỜ (Tiếng):", df_import.columns)
+                    col_value_excel = st.selectbox("Chọn cột chứa SỐ GIỜ (Tiếng):", danh_sach_cot, index=idx_mac_dinh)
+                    
                     if st.button("🚀 XÁC NHẬN ĐẨY LÊN HỆ THỐNG (Ops)", type="primary"):
-                        rows_to_insert = []
-                        for _, row in df_import.iterrows():
-                            # Mảng đẩy vào Sheet Nhat_Ky_Ops
-                            dong_moi = [str(ngay_ghi_nhan), str(row[col_name_excel]).strip(), "Hoàn thành", "Ops", "Import từ Excel", 0, 0, 0, float(row[col_value_excel])]
-                            rows_to_insert.append(dong_moi)
+                        if col_name_excel == col_value_excel:
+                            st.error("⚠️ Lỗi: Bạn đang chọn trùng 1 cột cho cả TÊN và SỐ GIỜ. Hãy chọn lại ô bên trên!")
+                        else:
+                            rows_to_insert = []
+                            for _, row in df_import.iterrows():
+                                try:
+                                    so_gio_val = float(row[col_value_excel])
+                                    dong_moi = [str(ngay_ghi_nhan), str(row[col_name_excel]).strip(), "Hoàn thành", "Ops", "Import từ Excel", 0, 0, 0, so_gio_val]
+                                    rows_to_insert.append(dong_moi)
+                                except ValueError:
+                                    continue 
 
-                        if gc and rows_to_insert:
-                            gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_rows(rows_to_insert)
-                            st.success(f"✅ Đã import thành công {len(rows_to_insert)} nhân sự vào bảng Vận hành Ops!")
+                            if gc and rows_to_insert:
+                                gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_rows(rows_to_insert)
+                                st.success(f"✅ Đã import thành công {len(rows_to_insert)} nhân sự vào bảng Vận hành Ops!")
 
             except Exception as e:
                 st.error(f"❌ Có lỗi khi đọc file Excel: {e}")
