@@ -4,3 +4,4 @@ pandas
 gspread
 plotly
 openpyxl
+xlsxwriter
