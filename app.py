@@ -192,10 +192,14 @@ elif menu == "📝 Đánh giá Hàng loạt":
     
     col_ngay, col_trong = st.columns([1, 2])
     with col_ngay: ngay_ghi_nhan = st.date_input("🗓️ Chọn ngày ghi nhận:", today)
+    
+    # THUẬT TOÁN LÙI NGÀY: Lấy ngày cuối cùng của tháng trước
+    # Ví dụ: ngay_ghi_nhan là 05/09/2026 -> ngay_cuoi_thang_truoc sẽ là 31/08/2026
+    ngay_cuoi_thang_truoc = ngay_ghi_nhan.replace(day=1) - datetime.timedelta(days=1)
+    
     doi_tuong = st.radio("Bộ phận đánh giá:", ["👥 Trợ giảng Chuyên môn (TA)", "⚙️ Trợ giảng Vận hành (Ops)"], horizontal=True)
     st.markdown("---")
     
-    # TÁCH 3 TAB RIÊNG BIỆT
     tab_daily, tab_weekly, tab_monthly = st.tabs(["📅 Chấm Công Hàng Ngày", "📅 Tổng kết Tuần (Giao ban)", "🚩 Tổng kết Tháng (Deadline KPI)"])
 
     # ==========================================
@@ -276,15 +280,16 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 
                 if diem_phat_tuan > 0 or diem_cong_tuan > 0:
                     if gc:
-                        # 10 cột, cột cuối để trống
+                        # Lưu với ngày ghi nhận hiện tại (vì họp là tính của tuần đó trong tháng)
                         gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_tuan_name, "Tổng kết Tuần", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng tuần", diem_phat_tuan, diem_cong_tuan, 0, 0, ""])
                         st.toast(f"Đã lưu Đánh giá Tuần cho {ta_tuan_name}!", icon="📋")
                 else: st.info("Không có chỉ số nào để lưu.")
 
-        # --- TAB TỔNG KẾT THÁNG ---
+        # --- TAB TỔNG KẾT THÁNG (ĐÃ SỬA LOGIC LÙI NGÀY) ---
         with tab_monthly:
-            st.subheader("Phạt Vi phạm Deadline Cuối Tháng (KPI)")
-            st.warning("⚠️ Chỉ thực hiện vào các ngày mùng 1 đến mùng 8 hàng tháng.")
+            st.subheader(f"Phạt Vi phạm Deadline Cuối Tháng (KPI của Tháng {ngay_cuoi_thang_truoc.month})")
+            st.info(f"💡 Hệ thống sẽ tự động lưu điểm phạt này vào ngày **{ngay_cuoi_thang_truoc.strftime('%d/%m/%Y')}** để trừ chuẩn xác vào KPI của tháng trước.")
+            
             ta_thang_name = st.selectbox("Chọn nhân sự (TA):", danh_sach_nhan_su, key="ta_name_thang")
             
             tre_bc_lop = st.number_input("Trễ Báo cáo lớp - Hạn mùng 1 (-10đ/ngày):", min_value=0, max_value=30, value=0)
@@ -303,8 +308,9 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 
                 if diem_phat_thang > 0 or diem_cong_thang > 0:
                     if gc:
-                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_thang_name, "Tổng kết Tháng", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng điểm HS", diem_phat_thang, diem_cong_thang, 0, 0, ""])
-                        st.toast(f"Đã chốt Deadline Tháng cho {ta_thang_name}!", icon="✅")
+                        # QUAN TRỌNG: Ghi dữ liệu vào ngày cuối cùng của tháng trước!
+                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_cuoi_thang_truoc), ta_thang_name, "Tổng kết Tháng", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng điểm HS", diem_phat_thang, diem_cong_thang, 0, 0, ""])
+                        st.toast(f"Đã chốt Deadline Tháng cho {ta_thang_name} vào KPI Tháng {ngay_cuoi_thang_truoc.month}!", icon="✅")
                 else: st.info("Nhân sự hoàn thành đúng hạn, không có chỉ số phạt.")
 
     # ==========================================
@@ -390,13 +396,16 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 diem_phat_tuan = vang_hop_ops * 5
                 if diem_phat_tuan > 0:
                     if gc:
+                        # Giao ban hàng tuần lưu đúng ngày hiện tại
                         gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_row([str(ngay_ghi_nhan), ops_tuan_name, "Tổng kết Tuần", "Ops", f"Vắng họp: {vang_hop_ops} buổi", diem_phat_tuan, 0, 0, 0])
                         st.toast(f"Đã phạt vắng họp đối với {ops_tuan_name}!", icon="📋")
                 else: st.info("Không có vi phạm vắng họp.")
 
-        # --- TAB TỔNG KẾT THÁNG ---
+        # --- TAB TỔNG KẾT THÁNG (ĐÃ SỬA LOGIC LÙI NGÀY) ---
         with tab_monthly:
-            st.subheader("Phạt Vi phạm Deadline Cuối Tháng (Ops)")
+            st.subheader(f"Phạt Vi phạm Deadline Cuối Tháng (KPI của Tháng {ngay_cuoi_thang_truoc.month})")
+            st.info(f"💡 Hệ thống sẽ tự động lưu điểm phạt này vào ngày **{ngay_cuoi_thang_truoc.strftime('%d/%m/%Y')}** để trừ chuẩn xác vào KPI của tháng trước.")
+            
             ops_thang_name = st.selectbox("Chọn nhân sự (Ops):", danh_sach_ops, key="ops_name_thang")
             tre_luong_ops = st.number_input("Trễ Chốt lương Ops (Hạn mùng 5) [-10đ/ngày]:", min_value=0, max_value=30, value=0)
             
@@ -404,8 +413,9 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 diem_phat_thang = tre_luong_ops * 10
                 if diem_phat_thang > 0:
                     if gc:
-                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_row([str(ngay_ghi_nhan), ops_thang_name, "Tổng kết Tháng", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_thang, 0, 0, 0])
-                        st.toast(f"Đã trừ {diem_phat_thang} điểm deadline của {ops_thang_name}!", icon="🚨")
+                        # QUAN TRỌNG: Ghi dữ liệu vào ngày cuối cùng của tháng trước!
+                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_Ops").append_row([str(ngay_cuoi_thang_truoc), ops_thang_name, "Tổng kết Tháng", "Ops", f"Trễ Lương: {tre_luong_ops}d", diem_phat_thang, 0, 0, 0])
+                        st.toast(f"Đã trừ {diem_phat_thang} điểm deadline của {ops_thang_name} vào KPI Tháng {ngay_cuoi_thang_truoc.month}!", icon="🚨")
                 else: st.info("Nhân sự nộp đúng hạn, không có điểm phạt.")
 
 # ------------------------------------------
