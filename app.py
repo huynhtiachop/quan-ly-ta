@@ -117,7 +117,7 @@ if menu == "🏠 Tổng quan & Chốt công":
 
                 col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
                 col_kpi1.metric(f"Tổng ca làm (Tháng {thang_chon})", f"{df_log['Số ca'].sum():.1f} ca")
-                col_kpi2.metric("Tổng giờ Ops", f"{df_log['Số giờ'].sum():.2f} h")
+                col_kpi2.metric("Tổng giờ Ops", f"{df_log['Số giờ'].sum():.1f} h")
                 col_kpi3.metric("Tổng Điểm Cộng", str(df_log['Điểm cộng'].sum()), "Tích cực")
                 col_kpi4.metric("Tổng Điểm Trừ", str(df_log['Điểm trừ'].sum()), "Vi phạm", delta_color="inverse")
                 st.markdown("---")
@@ -130,6 +130,7 @@ if menu == "🏠 Tổng quan & Chốt công":
                 df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
                 
                 st.subheader("📈 Phân Tích Dữ Liệu Trực Quan")
+                
                 col_chart1, col_chart2 = st.columns(2)
                 with col_chart1:
                     top_5 = df_ranking.head(5).sort_values(by="KPI_Cuối_Tháng", ascending=True) 
@@ -182,11 +183,12 @@ elif menu == "📝 Đánh giá Hàng loạt":
     # ==========================================
     if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
         with tab_daily:
-            st.info("💡 **MẸO NHẬP NHANH:** Tích vào ô **[✅ Đi làm]** cho những bạn có đi làm. Tích báo lỗi nếu có. Ca hoàn hảo tích ô Cuối cùng.")
+            st.info("💡 **HƯỚNG DẪN:** \n1. Tích vào ô **[✅ Đi làm]** cho người có làm ca này. \n2. Ở cột **[🔄 Đi thay cho ai?]**, chọn tên người nghỉ (nếu đây là ca đi thay). Bỏ trống nếu làm ca chính của mình.\n3. Đánh dấu lỗi hoặc điểm cộng. Nhấp đúp vào **[🔢 Nhập Số ca]** để sửa thành 1.5 hoặc 2.0 nếu cần.")
             
             df_input_ta = pd.DataFrame({
                 "Đi làm": [False] * len(danh_sach_nhan_su),
                 "Tên Nhân Sự": danh_sach_nhan_su,
+                "Đi thay cho ai?": [""] * len(danh_sach_nhan_su), # Cột chọn người đi thay
                 "Lỗi Check-in/out": [False] * len(danh_sach_nhan_su),
                 "Lỗi Điểm danh": [False] * len(danh_sach_nhan_su),
                 "Lỗi BTVN": [False] * len(danh_sach_nhan_su),
@@ -200,8 +202,9 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 column_config={
                     "Đi làm": st.column_config.CheckboxColumn("✅ Đi làm?", default=False),
                     "Tên Nhân Sự": st.column_config.TextColumn("👤 Họ và Tên", disabled=True), 
+                    "Đi thay cho ai?": st.column_config.SelectboxColumn("🔄 Đi thay cho ai?", help="Bỏ trống nếu đi ca chính. Chọn tên người nghỉ nếu đi thay.", options=[""] + danh_sach_nhan_su),
                     "Lỗi Check-in/out": st.column_config.CheckboxColumn("⚠️ Thiếu Checkin/out (-5đ)"),
-                    "Lỗi Điểm danh": st.column_config.CheckboxColumn("⚠️ Lỗi Đ.danh App/Sheet (-5đ)"),
+                    "Lỗi Điểm danh": st.column_config.CheckboxColumn("⚠️ Lỗi Đ.danh (-5đ)"),
                     "Lỗi BTVN": st.column_config.CheckboxColumn("⚠️ Sự cố BTVN (-5đ)"),
                     "Lớp có HS nghỉ": st.column_config.CheckboxColumn("⚠️ Có HS vắng (-2đ)"),
                     "Ca hoàn hảo (Cộng điểm)": st.column_config.CheckboxColumn("⭐ Ca Hoàn Hảo (+10đ)"),
@@ -219,7 +222,11 @@ elif menu == "📝 Đánh giá Hàng loạt":
                         diem_tru = (5 if row['Lỗi Check-in/out'] else 0) + (5 if row['Lỗi Điểm danh'] else 0) + (5 if row['Lỗi BTVN'] else 0) + (2 if row['Lớp có HS nghỉ'] else 0)
                         diem_cong = 10 if row['Ca hoàn hảo (Cộng điểm)'] else 0
                         
-                        dong_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru > 0 else "Hoàn thành", "Không", "Ghi nhận Hàng Loạt", diem_tru, diem_cong, 0, float(row['Số ca'])]
+                        # Xử lý lấy tên người đi thay
+                        nguoi_thay_val = str(row['Đi thay cho ai?']).strip()
+                        nguoi_di_thay = nguoi_thay_val if nguoi_thay_val and nguoi_thay_val != "None" else "Không"
+                        
+                        dong_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru > 0 else "Hoàn thành", nguoi_di_thay, "Ghi nhận Hàng Loạt", diem_tru, diem_cong, 0, float(row['Số ca'])]
                         rows_to_insert.append(dong_moi)
 
                     if gc and rows_to_insert:
@@ -256,7 +263,7 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 else: st.info("Không có chỉ số nào để lưu.")
 
     # ==========================================
-    # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS) - TỰ TÍNH GIỜ THEO CHECK IN/OUT
+    # LUỒNG 2: TRỢ GIẢNG VẬN HÀNH (OPS)
     # ==========================================
     else:
         try: danh_sach_ops = df_data[(df_data['Vai trò'].str.contains("Vận hành|Quản lý", na=False, case=False)) & (df_data['Họ và tên'].isin(danh_sach_nhan_su))]['Họ và tên'].tolist()
@@ -264,9 +271,8 @@ elif menu == "📝 Đánh giá Hàng loạt":
         if not danh_sach_ops: danh_sach_ops = danh_sach_nhan_su
             
         with tab_daily:
-            st.info("💡 **TỰ ĐỘNG TÍNH GIỜ:** Điền Giờ Check-in & Check-out, hệ thống sẽ tự động trừ và quy đổi ra Số Giờ làm cho Kế toán khi bạn bấm LƯU.")
+            st.info("💡 **TỰ ĐỘNG TÍNH GIỜ:** Tích chọn người đi làm. Điền Giờ Check-in & Check-out, hệ thống sẽ tự động trừ và quy đổi ra Số Giờ làm cho Kế toán.")
             
-            # Khởi tạo giá trị thời gian mặc định
             default_in = datetime.time(17, 30)
             default_out = datetime.time(21, 30)
             
@@ -303,21 +309,16 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 if danh_sach_ops_lam.empty: st.warning("Vui lòng tích chọn ít nhất 1 Ops đi làm!")
                 else:
                     rows_ops_insert = []
-                    log_gio_lam = [] # Ghi chú để hiện thông báo tổng giờ
+                    log_gio_lam = []
                     
                     for index, row in danh_sach_ops_lam.iterrows():
-                        # Thuật toán tính giờ tự động
                         in_t = row['Check-in']
                         out_t = row['Check-out']
                         
                         dt_in = datetime.datetime.combine(today, in_t)
                         dt_out = datetime.datetime.combine(today, out_t)
-                        
-                        # Xử lý làm xuyên đêm (Giờ ra nhỏ hơn giờ vào)
-                        if dt_out < dt_in:
-                            dt_out += datetime.timedelta(days=1)
+                        if dt_out < dt_in: dt_out += datetime.timedelta(days=1)
                             
-                        # Tính tổng số giờ thập phân
                         so_gio_thuc_te = round((dt_out - dt_in).total_seconds() / 3600.0, 2)
                         
                         diem_tru_ops = (5 if row['Đi muộn (-5đ)'] else 0) + (2 if row['Lỗi Cơ sở VC (-2đ)'] else 0) + (5 if row['Lỗi Sĩ số (-5đ)'] else 0) + (15 if row['Lỗi Phàn nàn (-15đ)'] else 0)
