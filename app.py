@@ -3,6 +3,7 @@ import datetime
 import pandas as pd
 import gspread
 import plotly.express as px
+import io
 
 # ==========================================
 # 1. CẤU HÌNH TRANG & UI
@@ -56,9 +57,17 @@ def lay_danh_sach_ta(url):
         return df_active['Họ và tên'].tolist(), df
     except: return ["Lỗi dữ liệu"], None
 
-@st.cache_data
-def convert_df(df):
-    return df.to_csv(index=False).encode('utf-8-sig')
+# Hàm xuất file Excel xịn xò
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Báo Cáo Tổng Hợp')
+        # Tự động căn chỉnh độ rộng cột cho đẹp
+        worksheet = writer.sheets['Báo Cáo Tổng Hợp']
+        for i, col in enumerate(df.columns):
+            column_len = max(df[col].astype(str).map(len).max(), len(col)) + 5
+            worksheet.set_column(i, i, column_len)
+    return output.getvalue()
 
 # ==========================================
 # 3. ĐIỀU HƯỚNG CHÍNH
@@ -67,16 +76,16 @@ with st.sidebar:
     st.markdown("### 🔴 KB-LAB")
     st.caption("*Kiến tạo chuẩn mực không gian tri thức hiện đại*")
     st.markdown("---")
-    menu = st.radio("MENU QUẢN LÝ", ["🏠 Tổng quan & Chốt công", "📝 Đánh giá Hàng loạt", "👥 Quản lý Trợ giảng"])
+    menu = st.radio("MENU QUẢN LÝ", ["🏠 Tổng quan & Báo cáo", "📝 Đánh giá Hàng loạt", "👥 Quản lý Trợ giảng"])
 
 today = datetime.date.today()
 danh_sach_nhan_su, df_data = lay_danh_sach_ta(SHEET_CSV_URL)
 
 # ------------------------------------------
-# MÀN HÌNH 1: DASHBOARD CHỐT CÔNG
+# MÀN HÌNH 1: DASHBOARD CHỐT CÔNG & BÁO CÁO
 # ------------------------------------------
-if menu == "🏠 Tổng quan & Chốt công":
-    st.title("Bảng Điều Khiển & Phân Tích Dữ Liệu")
+if menu == "🏠 Tổng quan & Báo cáo":
+    st.title("Bảng Điều Khiển & Xuất Báo Cáo Tháng")
     
     col_thang, col_nam, col_trong = st.columns([1, 1, 2])
     with col_thang: thang_chon = st.selectbox("Chọn Tháng", list(range(1, 13)), index=today.month - 1)
@@ -129,6 +138,13 @@ if menu == "🏠 Tổng quan & Chốt công":
                 df_ranking['KPI_Cuối_Tháng'] = 100 + df_ranking['Điểm_cộng'] - df_ranking['Điểm_trừ']
                 df_ranking = df_ranking.sort_values(by='KPI_Cuối_Tháng', ascending=False)
                 
+                # Đổi tên cột cho đẹp trước khi xuất Excel
+                df_export = df_ranking.rename(columns={
+                    'Tổng_ca': 'Tổng Số Ca (TA)', 'Tổng_giờ': 'Tổng Số Giờ (Ops)',
+                    'Điểm_cộng': 'Tổng Điểm Thưởng', 'Điểm_trừ': 'Tổng Điểm Phạt',
+                    'KPI_Cuối_Tháng': 'Chỉ Số KPI (Trên 100)'
+                })
+                
                 st.subheader("📈 Phân Tích Dữ Liệu Trực Quan")
                 
                 col_chart1, col_chart2 = st.columns(2)
@@ -144,10 +160,17 @@ if menu == "🏠 Tổng quan & Chốt công":
                 st.markdown("---")
                 
                 col_header, col_btn = st.columns([3, 1])
-                with col_header: st.subheader(f"🧮 Bảng Chốt Công (Tháng {thang_chon}/{nam_chon})")
+                with col_header: st.subheader(f"🧮 Bảng Chốt Công & KPI (Tháng {thang_chon}/{nam_chon})")
                 with col_btn:
-                    csv = convert_df(df_ranking)
-                    st.download_button(label="📥 Tải Bảng Lương (Excel/CSV)", data=csv, file_name=f"ChotCong_Thang{thang_chon}_{nam_chon}.csv", mime="text/csv")
+                    # Nút xuất file Excel chuyên nghiệp
+                    excel_data = to_excel(df_export)
+                    st.download_button(
+                        label="📥 XUẤT BÁO CÁO (EXCEL)", 
+                        data=excel_data, 
+                        file_name=f"Bao_Cao_Nhan_Su_Thang_{thang_chon}_{nam_chon}.xlsx", 
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
 
                 st.dataframe(
                     df_ranking,
@@ -183,12 +206,13 @@ elif menu == "📝 Đánh giá Hàng loạt":
     # ==========================================
     if doi_tuong == "👥 Trợ giảng Chuyên môn (TA)":
         with tab_daily:
-            st.info("💡 **HƯỚNG DẪN:** \n1. Tích vào ô **[✅ Đi làm]** cho người có làm ca này. \n2. Ở cột **[🔄 Đi thay cho ai?]**, chọn tên người nghỉ (nếu đây là ca đi thay). Bỏ trống nếu làm ca chính của mình.\n3. Đánh dấu lỗi hoặc điểm cộng. Nhấp đúp vào **[🔢 Nhập Số ca]** để sửa thành 1.5 hoặc 2.0 nếu cần.")
+            st.info("💡 **HƯỚNG DẪN:** \n1. Tích vào ô **[✅ Đi làm]**. \n2. Nhập tên lớp phụ trách (VD: M31) vào cột **[📚 Lớp dạy]**.\n3. Đánh dấu lỗi hoặc điểm cộng. Nhấp đúp vào **[🔢 Nhập Số ca]** để sửa số lượng ca nếu cần.")
             
             df_input_ta = pd.DataFrame({
                 "Đi làm": [False] * len(danh_sach_nhan_su),
                 "Tên Nhân Sự": danh_sach_nhan_su,
-                "Đi thay cho ai?": [""] * len(danh_sach_nhan_su), # Cột chọn người đi thay
+                "Lớp phụ trách": [""] * len(danh_sach_nhan_su), # Cột mới
+                "Đi thay cho ai?": [""] * len(danh_sach_nhan_su),
                 "Lỗi Check-in/out": [False] * len(danh_sach_nhan_su),
                 "Lỗi Điểm danh": [False] * len(danh_sach_nhan_su),
                 "Lỗi BTVN": [False] * len(danh_sach_nhan_su),
@@ -202,13 +226,14 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 column_config={
                     "Đi làm": st.column_config.CheckboxColumn("✅ Đi làm?", default=False),
                     "Tên Nhân Sự": st.column_config.TextColumn("👤 Họ và Tên", disabled=True), 
-                    "Đi thay cho ai?": st.column_config.SelectboxColumn("🔄 Đi thay cho ai?", help="Bỏ trống nếu đi ca chính. Chọn tên người nghỉ nếu đi thay.", options=[""] + danh_sach_nhan_su),
-                    "Lỗi Check-in/out": st.column_config.CheckboxColumn("⚠️ Thiếu Checkin/out (-5đ)"),
+                    "Lớp phụ trách": st.column_config.TextColumn("📚 Lớp dạy", help="Nhập mã lớp, ví dụ: QT2N6, M31..."),
+                    "Đi thay cho ai?": st.column_config.SelectboxColumn("🔄 Đi thay?", help="Bỏ trống nếu đi ca chính.", options=[""] + danh_sach_nhan_su),
+                    "Lỗi Check-in/out": st.column_config.CheckboxColumn("⚠️ Lỗi Checkin (-5đ)"),
                     "Lỗi Điểm danh": st.column_config.CheckboxColumn("⚠️ Lỗi Đ.danh (-5đ)"),
-                    "Lỗi BTVN": st.column_config.CheckboxColumn("⚠️ Sự cố BTVN (-5đ)"),
+                    "Lỗi BTVN": st.column_config.CheckboxColumn("⚠️ Lỗi BTVN (-5đ)"),
                     "Lớp có HS nghỉ": st.column_config.CheckboxColumn("⚠️ Có HS vắng (-2đ)"),
                     "Ca hoàn hảo (Cộng điểm)": st.column_config.CheckboxColumn("⭐ Ca Hoàn Hảo (+10đ)"),
-                    "Số ca": st.column_config.NumberColumn("🔢 Nhập Số ca", min_value=0.5, step=0.5, format="%.1f")
+                    "Số ca": st.column_config.NumberColumn("🔢 Số ca", min_value=0.5, step=0.5, format="%.1f")
                 },
                 hide_index=True, use_container_width=True
             )
@@ -222,18 +247,20 @@ elif menu == "📝 Đánh giá Hàng loạt":
                         diem_tru = (5 if row['Lỗi Check-in/out'] else 0) + (5 if row['Lỗi Điểm danh'] else 0) + (5 if row['Lỗi BTVN'] else 0) + (2 if row['Lớp có HS nghỉ'] else 0)
                         diem_cong = 10 if row['Ca hoàn hảo (Cộng điểm)'] else 0
                         
-                        # Xử lý lấy tên người đi thay
                         nguoi_thay_val = str(row['Đi thay cho ai?']).strip()
                         nguoi_di_thay = nguoi_thay_val if nguoi_thay_val and nguoi_thay_val != "None" else "Không"
+                        lop_day = str(row['Lớp phụ trách']).strip() if row['Lớp phụ trách'] else "Chưa nhập lớp"
                         
-                        dong_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru > 0 else "Hoàn thành", nguoi_di_thay, "Ghi nhận Hàng Loạt", diem_tru, diem_cong, 0, float(row['Số ca'])]
+                        # Ghi nhận dữ liệu: Có 10 cột (bao gồm cột Lớp phụ trách cuối cùng)
+                        dong_moi = [str(ngay_ghi_nhan), row['Tên Nhân Sự'], "Có lỗi" if diem_tru > 0 else "Hoàn thành", nguoi_di_thay, "Ghi nhận Hàng Loạt", diem_tru, diem_cong, 0, float(row['Số ca']), lop_day]
                         rows_to_insert.append(dong_moi)
 
                     if gc and rows_to_insert:
                         try:
+                            # Nếu sheet chưa có cột thứ 10, gspread vẫn tự động đẩy data vào cột J
                             gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_rows(rows_to_insert)
                             st.success(f"✅ Đã lưu chấm công Hàng ngày cho {len(rows_to_insert)} TA!")
-                        except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}")
+                        except Exception as e: st.error(f"Lỗi ghi dữ liệu: {e}. (Hãy chắc chắn bạn đã tạo cột 'Lớp phụ trách' ở cột thứ 10 trong Sheet Nhat_Ky_TA)")
         
         with tab_deadline:
             st.subheader("Báo cáo Tuần / Tháng (Phạt Deadline & Khen thưởng)")
@@ -258,7 +285,8 @@ elif menu == "📝 Đánh giá Hàng loạt":
                 
                 if diem_phat_dl > 0 or diem_cong_thang > 0:
                     if gc:
-                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng tháng", diem_phat_dl, diem_cong_thang, 0, 0])
+                        # Đẩy 10 cột để khớp với sheet TA hiện tại (Cột 10 để trống)
+                        gc.open_by_url(SHEET_MASTER_URL).worksheet("Nhat_Ky_TA").append_row([str(ngay_ghi_nhan), ta_dl_name, "Tổng kết", "Không", " | ".join(ghi_chu) if ghi_chu else "Thưởng tháng", diem_phat_dl, diem_cong_thang, 0, 0, ""])
                         st.toast(f"Đã lưu Báo cáo Phạt/Thưởng cho {ta_dl_name}!", icon="🌟")
                 else: st.info("Không có chỉ số nào để lưu.")
 
